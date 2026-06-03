@@ -276,8 +276,9 @@ document.getElementById('detail-edit').addEventListener('click', () => {
     alert('只能编辑自定义机器人')
     return
   }
-  // TODO: 加载配置进 builder 编辑
-  alert('编辑功能即将完成')
+  // 把配置存到 sessionStorage,builder 页面读取
+  sessionStorage.setItem('rn_edit_robot', JSON.stringify(currentDetailRobot))
+  window.location.href = 'builder.html?edit=' + currentDetailRobot.id
 })
 
 document.getElementById('detail-delete').addEventListener('click', () => {

@@ -398,8 +398,9 @@ saveBtn.addEventListener('click', () => {
   if (!stats) return
   const saved = JSON.parse(localStorage.getItem('rn_my_robots') || '[]')
   const grade = RobotParts.gradeRobot(stats)
-  saved.push({
-    id: 'MY-' + Date.now().toString(36).toUpperCase(),
+
+  const robotData = {
+    id: editingRobotId || 'MY-' + Date.now().toString(36).toUpperCase(),
     name: robotName || `机器人 #${saved.length + 1}`,
     parts: Object.fromEntries(
       Object.entries(build).map(([k, v]) => [k, v.id])
@@ -416,9 +417,23 @@ saveBtn.addEventListener('click', () => {
     bestScenario: grade.bestScenario?.id,
     bestScore: grade.bestScore,
     createdAt: new Date().toISOString(),
-  })
+  }
+
+  if (editingRobotId) {
+    // 更新现有机器人
+    const idx = saved.findIndex((r) => r.id === editingRobotId)
+    if (idx >= 0) {
+      robotData.createdAt = saved[idx].createdAt // 保留原创建时间
+      saved[idx] = robotData
+    }
+    alert(`机器人「${robotData.name}」已更新!\n综合评级: ${grade.grade} 级`)
+  } else {
+    // 新建
+    saved.push(robotData)
+    alert(`机器人「${robotData.name}」已保存!\n综合评级: ${grade.grade} 级`)
+  }
+
   localStorage.setItem('rn_my_robots', JSON.stringify(saved))
-  alert(`机器人「${robotName || '未命名'}」已保存!\n综合评级: ${grade.grade} 级`)
   window.location.href = 'dashboard.html'
 })
 
@@ -436,4 +451,30 @@ document.querySelector('.user-name').textContent = userName
 document.querySelector('.user-avatar').textContent = userName[0].toUpperCase()
 
 // ========== 启动 ==========
+// 检查是否从 dashboard 跳转过来编辑现有机器人
+let editingRobotId = null
+const editData = sessionStorage.getItem('rn_edit_robot')
+if (editData) {
+  try {
+    const robot = JSON.parse(editData)
+    sessionStorage.removeItem('rn_edit_robot')
+    editingRobotId = robot.id
+
+    // 从 parts map 重建 build 对象
+    build = {}
+    for (const [slotId, partId] of Object.entries(robot.parts)) {
+      const part = PARTS[slotId]?.find((p) => p.id === partId)
+      if (part) build[slotId] = part
+    }
+
+    robotName = robot.name
+    robotNameInput.value = robot.name
+    saveBtn.textContent = '更新机器人'
+
+    console.log('已加载机器人配置:', robot.name)
+  } catch (err) {
+    console.error('加载编辑配置失败:', err)
+  }
+}
+
 renderAll()
