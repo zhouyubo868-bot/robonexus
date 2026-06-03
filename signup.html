@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RoboNexus · 登录</title>
+    <title>RoboNexus · 注册</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -23,12 +23,23 @@
             </svg>
           </span>
           <div class="brand-text">
-            <h1>RoboNexus</h1>
-            <p>登录机器人控制台</p>
+            <h1>创建账户</h1>
+            <p>加入 RoboNexus 机器人控制台</p>
           </div>
         </div>
 
-        <form id="login-form" novalidate>
+        <form id="signup-form" novalidate>
+          <label class="field">
+            <span class="field-label">用户名</span>
+            <input
+              id="name"
+              type="text"
+              placeholder="给自己起个名字"
+              autocomplete="nickname"
+            />
+            <span class="field-error" id="name-error"></span>
+          </label>
+
           <label class="field">
             <span class="field-label">邮箱</span>
             <input
@@ -46,8 +57,8 @@
               <input
                 id="password"
                 type="password"
-                placeholder="请输入密码"
-                autocomplete="current-password"
+                placeholder="至少 6 位"
+                autocomplete="new-password"
               />
               <button type="button" class="pwd-toggle" id="pwd-toggle" aria-label="显示密码">
                 显示
@@ -56,37 +67,32 @@
             <span class="field-error" id="password-error"></span>
           </label>
 
-          <div class="form-row">
-            <label class="remember">
-              <input type="checkbox" id="remember" />
-              <span>记住我</span>
-            </label>
-            <a href="forgot.html" class="forgot-link">忘记密码？</a>
-          </div>
+          <label class="field">
+            <span class="field-label">确认密码</span>
+            <input
+              id="password2"
+              type="password"
+              placeholder="再次输入密码"
+              autocomplete="new-password"
+            />
+            <span class="field-error" id="password2-error"></span>
+          </label>
 
-          <button type="submit" class="submit-btn" id="submit-btn">登录</button>
+          <label class="agree">
+            <input type="checkbox" id="agree" />
+            <span>我已阅读并同意<a href="#terms">服务条款</a>和<a href="#privacy">隐私政策</a></span>
+          </label>
+          <span class="field-error" id="agree-error"></span>
+
+          <button type="submit" class="submit-btn" id="submit-btn">注册</button>
         </form>
 
-        <div class="divider"><span>或使用以下方式登录</span></div>
-
-        <div class="oauth-row">
-          <button type="button" class="oauth-btn" data-provider="google">
-            <span class="oauth-icon">G</span><span>Google</span>
-          </button>
-          <button type="button" class="oauth-btn" data-provider="github">
-            <span class="oauth-icon">GH</span><span>GitHub</span>
-          </button>
-          <button type="button" class="oauth-btn" data-provider="wechat">
-            <span class="oauth-icon">微</span><span>微信</span>
-          </button>
-        </div>
-
         <p class="signup-hint">
-          还没有账户？<a href="signup.html">立即注册</a>
+          已有账户？<a href="index.html">返回登录</a>
         </p>
       </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="signup.js"></script>
   </body>
 </html>
