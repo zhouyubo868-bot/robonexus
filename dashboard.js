@@ -30,16 +30,31 @@ function renderRobots(robots) {
         </div>
       </div>
       <div class="robot-meta">
+        ${robot.isCustom ? `
+          <div class="meta-row">
+            <span class="meta-label">形态</span>
+            <span class="meta-value">${formLabel(robot.form)}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">智能/运动</span>
+            <span class="meta-value">${Math.round(robot.stats.intelligence)}/${Math.round(robot.stats.mobility)}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">技能数</span>
+            <span class="meta-value">${robot.skills.length}</span>
+          </div>
+        ` : `
+          <div class="meta-row">
+            <span class="meta-label">电量</span>
+            <span class="meta-value">${robot.battery}%</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">任务数</span>
+            <span class="meta-value">${robot.tasks}</span>
+          </div>
+        `}
         <div class="meta-row">
-          <span class="meta-label">电量</span>
-          <span class="meta-value">${robot.battery}%</span>
-        </div>
-        <div class="meta-row">
-          <span class="meta-label">任务数</span>
-          <span class="meta-value">${robot.tasks}</span>
-        </div>
-        <div class="meta-row">
-          <span class="meta-label">最后上线</span>
+          <span class="meta-label">${robot.isCustom ? '创建于' : '最后上线'}</span>
           <span class="meta-value">${robot.lastSeen}</span>
         </div>
       </div>
@@ -58,6 +73,10 @@ function renderRobots(robots) {
   })
 }
 
+function formLabel(form) {
+  return { humanoid: '🚶 人形', quadruped: '🐕 四足', wheeled: '🛞 轮式', arm: '🦾 机械臂' }[form] || form
+}
+
 // 填充统计卡片
 function renderStats(stats) {
   const set = (id, val) => {
@@ -73,13 +92,47 @@ function renderStats(stats) {
 // 加载数据
 async function loadDashboard() {
   try {
-    const [robots, stats] = await Promise.all([RoboAPI.getRobots(), RoboAPI.getStats()])
+    // 优先使用本地保存的机器人,没有则用 API 获取(mock 或真实后端)
+    let robots = []
+    const savedRobots = JSON.parse(localStorage.getItem('rn_my_robots') || '[]')
+
+    if (savedRobots.length) {
+      // 用户已保存机器人,转成 dashboard 需要的格式
+      robots = savedRobots.map((r) => ({
+        id: r.id,
+        name: r.name,
+        status: 'offline', // 保存的设计,默认离线
+        battery: 0,
+        tasks: 0,
+        lastSeen: formatTime(r.createdAt),
+        // 附加:自定义机器人的特殊字段
+        isCustom: true,
+        form: r.form,
+        stats: r.stats,
+        skills: r.skills,
+      }))
+    } else {
+      // 没有保存机器人,从 API 拉取(含 mock 数据)
+      robots = await RoboAPI.getRobots()
+    }
+
+    const stats = await RoboAPI.getStats()
     renderRobots(robots)
     renderStats(stats)
   } catch (err) {
     console.error('加载控制台数据失败:', err)
     robotsContainer.innerHTML = `<p style="color: var(--text-dim)">加载失败: ${err.message}</p>`
   }
+}
+
+function formatTime(iso) {
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = Math.floor((now - d) / 1000)
+  if (diff < 60) return '刚刚'
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
+  return `${Math.floor(diff / 86400)}天前`
 }
 
 // 视图切换(网格/列表)
