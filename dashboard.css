@@ -319,13 +319,14 @@
   border: 1px solid var(--card-border);
   border-radius: var(--radius);
   padding: 20px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.2s;
   cursor: pointer;
 }
 
 .robot-card:hover {
   border-color: var(--primary);
   box-shadow: 0 8px 24px rgba(23, 200, 200, 0.15);
+  transform: translateY(-2px);
 }
 
 .robot-header {

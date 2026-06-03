@@ -237,6 +237,22 @@
   height: auto;
   max-height: 420px;
   filter: drop-shadow(0 8px 24px rgba(23, 200, 200, 0.25));
+  animation: robotIdle 6s ease-in-out infinite;
+}
+
+@keyframes robotIdle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
+
+.robot-svg:hover {
+  filter: drop-shadow(0 12px 32px rgba(23, 200, 200, 0.45));
+  animation: robotHover 2s ease-in-out infinite;
+}
+
+@keyframes robotHover {
+  0%, 100% { transform: translateY(-2px) scale(1.02); }
+  50% { transform: translateY(-6px) scale(1.02); }
 }
 
 .robot-part {

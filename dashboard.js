@@ -17,6 +17,27 @@ const STATUS_TEXT = { online: '在线', offline: '离线', error: '故障' }
 
 // 渲染机器人卡片
 function renderRobots(robots) {
+  if (!robots.length) {
+    // 空状态:引导去组装
+    robotsContainer.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px;">
+        <div style="font-size: 64px; margin-bottom: 16px; opacity: 0.6;">🤖</div>
+        <h3 style="font-size: 20px; margin-bottom: 8px;">还没有机器人</h3>
+        <p style="color: var(--text-dim); margin-bottom: 24px;">
+          去组装实验室设计你的第一台机器人吧
+        </p>
+        <button class="btn-primary" onclick="location.href='builder.html'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          开始组装
+        </button>
+      </div>
+    `
+    return
+  }
+
   robotsContainer.innerHTML = robots
     .map(
       (robot) => {
