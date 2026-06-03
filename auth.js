@@ -119,23 +119,28 @@ loginForm.addEventListener('submit', async (e) => {
 
   if (!ok) return
 
-  // 记住我：保存或清除邮箱
-  if (rememberCheckbox.checked) {
-    localStorage.setItem('rn_remember_email', email)
-  } else {
-    localStorage.removeItem('rn_remember_email')
-  }
-
   const submitBtn = loginForm.querySelector('.submit-btn')
   submitBtn.disabled = true
   submitBtn.textContent = '登录中…'
 
-  // TODO: 接入真实登录接口
-  await new Promise((r) => setTimeout(r, 800))
-  console.log('login', { email, password, remember: rememberCheckbox.checked })
+  try {
+    const result = await RoboAPI.login(email, password)
+    RoboSession.save(result)
 
-  submitBtn.disabled = false
-  submitBtn.textContent = '登录'
+    // 记住我：保存或清除邮箱
+    if (rememberCheckbox.checked) {
+      localStorage.setItem('rn_remember_email', email)
+    } else {
+      localStorage.removeItem('rn_remember_email')
+    }
+
+    // 跳转到控制台
+    window.location.href = 'dashboard.html'
+  } catch (err) {
+    setError(loginPassword, loginPasswordError, err.message || '登录失败')
+    submitBtn.disabled = false
+    submitBtn.textContent = '登录'
+  }
 })
 
 // ========== 注册表单 ==========
@@ -214,12 +219,17 @@ signupForm.addEventListener('submit', async (e) => {
   submitBtn.disabled = true
   submitBtn.textContent = '注册中…'
 
-  // TODO: 接入真实注册接口
-  await new Promise((r) => setTimeout(r, 800))
-  console.log('signup', { name, email, password })
+  try {
+    const result = await RoboAPI.signup(name, email, password)
+    RoboSession.save(result)
 
-  submitBtn.disabled = false
-  submitBtn.textContent = '注册'
+    // 跳转到控制台
+    window.location.href = 'dashboard.html'
+  } catch (err) {
+    setError(signupEmail, signupEmailError, err.message || '注册失败')
+    submitBtn.disabled = false
+    submitBtn.textContent = '注册'
+  }
 })
 
 // ========== 找回密码表单 ==========
@@ -249,9 +259,11 @@ forgotForm.addEventListener('submit', async (e) => {
   submitBtn.disabled = true
   submitBtn.textContent = '发送中…'
 
-  // TODO: 接入真实的重置密码接口
-  await new Promise((r) => setTimeout(r, 800))
-  console.log('forgot-password', { email })
+  try {
+    await RoboAPI.forgotPassword(email)
+  } catch (err) {
+    console.error('forgot-password error:', err)
+  }
 
   // 不论邮箱是否注册都提示同样内容，避免泄露账户是否存在
   sentNote.hidden = false
