@@ -397,6 +397,7 @@ saveBtn.addEventListener('click', () => {
   const stats = computeStats(build)
   if (!stats) return
   const saved = JSON.parse(localStorage.getItem('rn_my_robots') || '[]')
+  const grade = RobotParts.gradeRobot(stats)
   saved.push({
     id: 'MY-' + Date.now().toString(36).toUpperCase(),
     name: robotName || `机器人 #${saved.length + 1}`,
@@ -411,10 +412,13 @@ saveBtn.addEventListener('click', () => {
     },
     skills: stats.skills,
     form: stats.form,
+    grade: grade.grade,
+    bestScenario: grade.bestScenario?.id,
+    bestScore: grade.bestScore,
     createdAt: new Date().toISOString(),
   })
   localStorage.setItem('rn_my_robots', JSON.stringify(saved))
-  alert(`机器人「${robotName || '未命名'}」已保存!`)
+  alert(`机器人「${robotName || '未命名'}」已保存!\n综合评级: ${grade.grade} 级`)
   window.location.href = 'dashboard.html'
 })
 

@@ -363,4 +363,174 @@ function computeStats(build) {
   }
 }
 
-window.RobotParts = { SLOTS, PARTS, checkCompatibility, computeStats }
+// ========== 场景挑战系统 ==========
+// 5 个真实应用场景,每个场景对机器人各项属性有不同的门槛要求
+const SCENARIOS = [
+  {
+    id: 'home-butler',
+    name: '🏠 家庭管家',
+    desc: '室内环境,执行日常家务、物品递送、语音交互。需要灵巧操作和人机交互能力。',
+    requirements: {
+      intelligence: { min: 60, weight: 0.35 },
+      mobility: { min: 40, weight: 0.20 },
+      perception: { min: 50, weight: 0.25 },
+      runtime: { min: 2, weight: 0.15 }, // 小时
+      weight: { max: 40, weight: 0.05 }, // kg
+    },
+    bonusSkills: ['自然语言指令', '物体识别', '精密操作', '双臂操作'],
+    mustHaveSkills: [],
+  },
+  {
+    id: 'factory-heavy',
+    name: '🏭 工厂搬运',
+    desc: '负重搬运、高重复精度作业。需要大扭矩执行器和长续航。',
+    requirements: {
+      mobility: { min: 50, weight: 0.30 },
+      stability: { min: 60, weight: 0.25 },
+      runtime: { min: 3, weight: 0.25 },
+      intelligence: { min: 30, weight: 0.10 },
+      perception: { min: 40, weight: 0.10 },
+    },
+    bonusSkills: ['负重', '负重行走', '基础动作'],
+    mustHaveSkills: [],
+  },
+  {
+    id: 'outdoor-patrol',
+    name: '🌲 户外巡逻',
+    desc: '复杂地形导航、长距离自主巡逻、异常检测。对感知和续航要求高。',
+    requirements: {
+      perception: { min: 70, weight: 0.30 },
+      mobility: { min: 60, weight: 0.25 },
+      runtime: { min: 3, weight: 0.20 },
+      stability: { min: 50, weight: 0.15 },
+      intelligence: { min: 50, weight: 0.10 },
+    },
+    bonusSkills: ['SLAM 建图', '远距避障', '复杂地形', '越野', '动态行走'],
+    mustHaveSkills: ['深度感知'],
+  },
+  {
+    id: 'extreme-agility',
+    name: '⚡ 极限挑战',
+    desc: '动态步态、爆发动作、复杂协调。竞技/测试场景,追求运动极限。',
+    requirements: {
+      mobility: { min: 85, weight: 0.40 },
+      stability: { min: 80, weight: 0.30 },
+      intelligence: { min: 60, weight: 0.15 },
+      perception: { min: 60, weight: 0.10 },
+      dof: { min: 20, weight: 0.05 },
+    },
+    bonusSkills: ['跳跃', '抗扰动', '后空翻', '动态步态', '爆发动作'],
+    mustHaveSkills: ['动态行走'],
+  },
+  {
+    id: 'rescue-probe',
+    name: '🚨 救援探测',
+    desc: '狭窄/危险环境探测、受困者定位、通信中继。轻量化、高感知、长续航。',
+    requirements: {
+      perception: { min: 80, weight: 0.35 },
+      runtime: { min: 4, weight: 0.25 },
+      intelligence: { min: 55, weight: 0.15 },
+      weight: { max: 30, weight: 0.15 },
+      mobility: { min: 50, weight: 0.10 },
+    },
+    bonusSkills: ['深度感知', '建图导航', '触觉操作', '人体姿态识别', '点云感知'],
+    mustHaveSkills: ['深度感知'],
+  },
+]
+
+// 评估机器人在某个场景下的表现,返回 0-100 分
+function evaluateScenario(stats, scenarioId) {
+  if (!stats) return null
+  const sc = SCENARIOS.find((s) => s.id === scenarioId)
+  if (!sc) return null
+
+  let score = 0
+  let totalWeight = 0
+  const details = []
+
+  // 检查硬性要求(min/max)
+  for (const [key, req] of Object.entries(sc.requirements)) {
+    const val = stats[key]
+    const { min, max, weight } = req
+    totalWeight += weight
+
+    if (min !== undefined) {
+      if (val < min) {
+        // 未达标,按比例扣分
+        const ratio = val / min
+        score += weight * 100 * ratio
+        details.push({ key, pass: false, val, threshold: `≥${min}`, ratio })
+      } else {
+        // 达标,满分,超出部分有 bonus(上限 120%)
+        const bonus = Math.min(1.2, val / min)
+        score += weight * 100 * bonus
+        details.push({ key, pass: true, val, threshold: `≥${min}`, bonus })
+      }
+    }
+
+    if (max !== undefined) {
+      if (val > max) {
+        // 超标(如重量超限),扣分
+        const ratio = max / val
+        score += weight * 100 * ratio
+        details.push({ key, pass: false, val, threshold: `≤${max}`, ratio })
+      } else {
+        score += weight * 100
+        details.push({ key, pass: true, val, threshold: `≤${max}` })
+      }
+    }
+  }
+
+  // 技能加分
+  const hasSkills = new Set(stats.skills)
+  let skillBonus = 0
+  for (const skill of sc.bonusSkills) {
+    if (hasSkills.has(skill)) skillBonus += 3
+  }
+  // 必须技能检查
+  let missingMust = []
+  for (const skill of sc.mustHaveSkills) {
+    if (!hasSkills.has(skill)) {
+      missingMust.push(skill)
+      score *= 0.7 // 缺必须技能,总分打七折
+    }
+  }
+
+  score = Math.min(100, (score / totalWeight) + skillBonus)
+
+  return {
+    score: Math.round(score),
+    details,
+    skillBonus,
+    missingMust,
+    pass: score >= 60, // 60 分及格
+  }
+}
+
+// 给机器人整体评级:找最擅长的场景,按分数分级
+function gradeRobot(stats) {
+  if (!stats) return null
+  const results = SCENARIOS.map((sc) => ({
+    scenario: sc,
+    result: evaluateScenario(stats, sc.id),
+  })).filter((r) => r.result)
+
+  const best = results.sort((a, b) => b.result.score - a.result.score)[0]
+  if (!best) return { grade: 'D', bestScenario: null, bestScore: 0 }
+
+  const score = best.result.score
+  let grade = 'D'
+  if (score >= 90) grade = 'S'
+  else if (score >= 80) grade = 'A'
+  else if (score >= 70) grade = 'B'
+  else if (score >= 60) grade = 'C'
+
+  return {
+    grade,
+    bestScenario: best.scenario,
+    bestScore: score,
+    allResults: results,
+  }
+}
+
+window.RobotParts = { SLOTS, PARTS, SCENARIOS, checkCompatibility, computeStats, evaluateScenario, gradeRobot }

@@ -1,0 +1,234 @@
+/* robot-detail.css — 机器人详情模态框样式 */
+
+.detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 11, 20, 0.75);
+  backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+  z-index: 300;
+  padding: 24px;
+}
+
+.detail-modal {
+  width: 100%;
+  max-width: 920px;
+  max-height: 90vh;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--card-border);
+  background: linear-gradient(180deg, var(--card), var(--bg-soft));
+}
+
+.detail-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.detail-title h2 {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.detail-badge {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: rgba(23, 200, 200, 0.15);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.detail-close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.detail-close:hover {
+  background: var(--field-bg);
+  color: var(--text);
+}
+
+.detail-body {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.detail-section {
+  margin-bottom: 28px;
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.detail-stat-card {
+  padding: 14px;
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
+}
+
+.detail-stat-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.detail-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail-stat-value small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-left: 3px;
+}
+
+.detail-parts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-part-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--field-bg);
+  border: 1px solid var(--field-border);
+  border-radius: 10px;
+}
+
+.detail-part-icon {
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--card);
+  border-radius: 8px;
+}
+
+.detail-part-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-part-slot {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+
+.detail-part-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.detail-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-skill {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  background: rgba(91, 140, 255, 0.12);
+  border: 1px solid rgba(91, 140, 255, 0.3);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.detail-actions {
+  padding: 16px 24px;
+  border-top: 1px solid var(--card-border);
+  display: flex;
+  gap: 10px;
+  background: var(--bg-soft);
+}
+
+.detail-actions button {
+  flex: 1;
+}
+
+.btn-secondary {
+  height: 40px;
+  padding: 0 18px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.btn-secondary:hover {
+  border-color: var(--primary);
+  background: var(--field-bg);
+}
+
+.btn-danger {
+  height: 40px;
+  padding: 0 18px;
+  border: none;
+  border-radius: var(--radius);
+  background: rgba(239, 68, 68, 0.15);
+  color: #ff5d5d;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+}

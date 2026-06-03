@@ -6,6 +6,7 @@
     <title>RoboNexus · 控制台</title>
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="dashboard.css" />
+    <link rel="stylesheet" href="robot-detail.css" />
   </head>
   <body class="dashboard-body">
     <!-- 顶部导航栏 -->
@@ -177,7 +178,28 @@
       </main>
     </div>
 
+    <!-- 机器人详情模态框 -->
+    <div class="detail-overlay" id="detail-overlay" hidden>
+      <div class="detail-modal">
+        <div class="detail-header">
+          <div class="detail-title">
+            <h2 id="detail-name">机器人名称</h2>
+            <span class="detail-badge" id="detail-badge">未知形态</span>
+          </div>
+          <button class="detail-close" id="detail-close" aria-label="关闭">×</button>
+        </div>
+        <div class="detail-body" id="detail-body">
+          <!-- JS 渲染 -->
+        </div>
+        <div class="detail-actions">
+          <button class="btn-secondary" id="detail-edit">编辑配置</button>
+          <button class="btn-danger" id="detail-delete">删除</button>
+        </div>
+      </div>
+    </div>
+
     <script src="api.js"></script>
+    <script src="robot-parts.js"></script>
     <script src="dashboard.js"></script>
   </body>
 </html>
