@@ -91,10 +91,9 @@ document.querySelectorAll('.toggle-btn').forEach((btn) => {
   })
 })
 
-// 添加机器人
+// 添加机器人 → 进入组装实验室
 addRobotBtn.addEventListener('click', () => {
-  // TODO: 打开添加机器人表单
-  alert('添加机器人功能开发中')
+  window.location.href = 'builder.html'
 })
 
 // 用户菜单 / 登出
