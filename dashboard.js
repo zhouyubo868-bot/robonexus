@@ -15,42 +15,21 @@ const userBtn = document.getElementById('user-btn')
 // 状态文案映射
 const STATUS_TEXT = { online: '在线', offline: '离线', error: '故障' }
 
-// 渲染机器人卡片
-function renderRobots(robots) {
-  if (!robots.length) {
-    // 空状态:引导去组装
-    robotsContainer.innerHTML = `
-      <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px;">
-        <div style="font-size: 64px; margin-bottom: 16px; opacity: 0.6;">🤖</div>
-        <h3 style="font-size: 20px; margin-bottom: 8px;">还没有机器人</h3>
-        <p style="color: var(--text-dim); margin-bottom: 24px;">
-          去组装实验室设计你的第一台机器人吧
-        </p>
-        <button class="btn-primary" onclick="location.href='builder.html'">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          开始组装
-        </button>
-      </div>
-    `
-    return
-  }
+// 当前展示的机器人列表(实时事件就地更新它)
+let currentRobots = []
 
-  robotsContainer.innerHTML = robots
-    .map(
-      (robot) => {
-        const gradeColors = { S: '#f59e0b', A: '#10b981', B: '#3b82f6', C: '#8b5cf6', D: '#6b7280' }
-        const gradeBadge = robot.grade ? `
-          <div style="position: absolute; top: 12px; right: 12px; width: 36px; height: 36px;
-                      border-radius: 50%; background: ${gradeColors[robot.grade]}22;
-                      border: 2px solid ${gradeColors[robot.grade]}; display: grid; place-items: center;
-                      font-weight: 800; font-size: 18px; color: ${gradeColors[robot.grade]};">
-            ${robot.grade}
-          </div>
-        ` : ''
-        return `
+// 单张机器人卡片的 HTML
+function robotCardHTML(robot) {
+  const gradeColors = { S: '#f59e0b', A: '#10b981', B: '#3b82f6', C: '#8b5cf6', D: '#6b7280' }
+  const gradeBadge = robot.grade ? `
+    <div style="position: absolute; top: 12px; right: 12px; width: 36px; height: 36px;
+                border-radius: 50%; background: ${gradeColors[robot.grade]}22;
+                border: 2px solid ${gradeColors[robot.grade]}; display: grid; place-items: center;
+                font-weight: 800; font-size: 18px; color: ${gradeColors[robot.grade]};">
+      ${robot.grade}
+    </div>
+  ` : ''
+  return `
     <div class="robot-card" data-id="${robot.id}" style="position: relative;">
       ${gradeBadge}
       <div class="robot-header">
@@ -80,11 +59,11 @@ function renderRobots(robots) {
         ` : `
           <div class="meta-row">
             <span class="meta-label">电量</span>
-            <span class="meta-value">${robot.battery}%</span>
+            <span class="meta-value" data-field="battery">${robot.battery}%</span>
           </div>
           <div class="meta-row">
             <span class="meta-label">任务数</span>
-            <span class="meta-value">${robot.tasks}</span>
+            <span class="meta-value" data-field="tasks">${robot.tasks}</span>
           </div>
         `}
         <div class="meta-row">
@@ -94,15 +73,38 @@ function renderRobots(robots) {
       </div>
     </div>
   `
-      }
-    )
-    .join('')
+}
+
+// 渲染机器人卡片
+function renderRobots(robots) {
+  if (!robots.length) {
+    // 空状态:引导去组装
+    robotsContainer.innerHTML = `
+      <div style="grid-column: 1/-1; text-align: center; padding: 60px 20px;">
+        <div style="font-size: 64px; margin-bottom: 16px; opacity: 0.6;">🤖</div>
+        <h3 style="font-size: 20px; margin-bottom: 8px;">还没有机器人</h3>
+        <p style="color: var(--text-dim); margin-bottom: 24px;">
+          去组装实验室设计你的第一台机器人吧
+        </p>
+        <button class="btn-primary" onclick="location.href='builder.html'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 6px;">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          开始组装
+        </button>
+      </div>
+    `
+    return
+  }
+
+  robotsContainer.innerHTML = robots.map(robotCardHTML).join('')
 
   // 点击卡片查看详情
   document.querySelectorAll('.robot-card').forEach((card) => {
     card.addEventListener('click', () => {
       const robotId = card.dataset.id
-      const robot = robots.find((r) => r.id === robotId)
+      const robot = currentRobots.find((r) => r.id === robotId)
       if (robot) openDetail(robot)
     })
   })
@@ -360,13 +362,84 @@ async function loadDashboard() {
     }
 
     const stats = await RoboAPI.getStats()
+    currentRobots = robots
+    window.currentRobots = robots // 供 tasks.js 的机器人下拉使用
     renderRobots(robots)
     renderStats(stats)
+
+    // 接入实时推送:喂入当前列表后开始接收事件
+    if (window.RoboRealtime) {
+      RoboRealtime.seed(robots)
+      RoboRealtime.connect()
+    }
   } catch (err) {
     console.error('加载控制台数据失败:', err)
     robotsContainer.innerHTML = `<p style="color: var(--text-dim)">加载失败: ${err.message}</p>`
   }
 }
+
+// ========== 实时推送订阅 ==========
+// 根据机器人 id 找到模型并就地更新对应卡片字段
+function updateRobotModel(id, patch) {
+  const robot = currentRobots.find((r) => r.id === id)
+  if (!robot) return null
+  Object.assign(robot, patch)
+  return robot
+}
+
+function flashCard(card) {
+  if (!card) return
+  card.classList.remove('rt-flash')
+  void card.offsetWidth // 强制重排,重启动画
+  card.classList.add('rt-flash')
+}
+
+function cardEl(id) {
+  return robotsContainer.querySelector(`.robot-card[data-id="${id}"]`)
+}
+
+function subscribeRealtime() {
+  if (!window.RoboRealtime) return
+
+  // 状态变化:重绘整张卡片(状态徽标 + 配色)
+  RoboRealtime.on('robot:status', ({ id, status }) => {
+    const robot = updateRobotModel(id, { status })
+    const card = cardEl(id)
+    if (robot && card) {
+      card.outerHTML = robotCardHTML(robot)
+      const fresh = cardEl(id)
+      fresh?.addEventListener('click', () => openDetail(robot))
+      flashCard(fresh)
+    }
+  })
+
+  // 电量变化:只更新数值,避免整卡重绘
+  RoboRealtime.on('robot:battery', ({ id, battery }) => {
+    updateRobotModel(id, { battery })
+    const field = cardEl(id)?.querySelector('[data-field="battery"]')
+    if (field) field.textContent = `${battery}%`
+  })
+
+  // 任务计数
+  RoboRealtime.on('robot:task', ({ id, tasks }) => {
+    updateRobotModel(id, { tasks })
+    const field = cardEl(id)?.querySelector('[data-field="tasks"]')
+    if (field) {
+      field.textContent = tasks
+      flashCard(cardEl(id))
+    }
+  })
+
+  // 统计卡片实时刷新
+  RoboRealtime.on('stats', (stats) => renderStats(stats))
+
+  // 告警:交给通知中心(若已加载),并红点提示
+  RoboRealtime.on('alert', (alert) => {
+    if (window.RoboNotify) RoboNotify.push(alert)
+  })
+}
+
+subscribeRealtime()
 
 function formatTime(iso) {
   const d = new Date(iso)
@@ -378,37 +451,113 @@ function formatTime(iso) {
   return `${Math.floor(diff / 86400)}天前`
 }
 
-// 视图切换(网格/列表)
-document.querySelectorAll('.toggle-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.toggle-btn').forEach((b) => b.classList.remove('active'))
-    btn.classList.add('active')
-    // TODO: 实现列表视图布局
+// 视图切换(网格/列表),记住用户偏好
+function applyView(view) {
+  robotsContainer.classList.toggle('list-view', view === 'list')
+  document.querySelectorAll('.toggle-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === view)
   })
+  localStorage.setItem('rn_view', view)
+}
+
+document.querySelectorAll('.toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => applyView(btn.dataset.view))
 })
+
+// 恢复上次的视图偏好
+applyView(localStorage.getItem('rn_view') || 'grid')
 
 // 添加机器人 → 进入组装实验室
 addRobotBtn.addEventListener('click', () => {
   window.location.href = 'builder.html'
 })
 
-// 用户菜单 / 登出
-userBtn.addEventListener('click', () => {
-  // TODO: 改成下拉菜单(设置、登出等)
-  if (confirm('要退出登录吗?')) {
-    RoboSession.clear()
-    window.location.href = 'auth.html'
-  }
-})
+// 用户下拉菜单(设置 / 登出)
+const userName = localStorage.getItem('rn_user_name') || 'Austin'
+const userEmail = localStorage.getItem('rn_user_email') || ''
 
-// 通知按钮
-document.getElementById('notifications-btn').addEventListener('click', () => {
-  // TODO: 显示通知列表
-  alert('通知功能开发中')
-})
+function buildUserDropdown() {
+  const menu = document.querySelector('.user-menu')
+  if (!menu) return
+
+  const dd = document.createElement('div')
+  dd.className = 'user-dropdown'
+  dd.hidden = true
+  dd.innerHTML = `
+    <div class="user-dropdown-head">
+      <div class="user-dropdown-avatar">${userName[0].toUpperCase()}</div>
+      <div class="user-dropdown-info">
+        <div class="user-dropdown-name">${userName}</div>
+        <div class="user-dropdown-email">${userEmail || '未绑定邮箱'}</div>
+      </div>
+    </div>
+    <div class="user-dropdown-menu">
+      <button class="user-dropdown-item" data-action="settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        账户设置
+      </button>
+      <button class="user-dropdown-item" data-action="theme">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+        外观偏好
+      </button>
+      <div class="user-dropdown-divider"></div>
+      <button class="user-dropdown-item danger" data-action="logout">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+        退出登录
+      </button>
+    </div>
+  `
+  menu.appendChild(dd)
+
+  let open = false
+  const toggle = (show) => {
+    open = show ?? !open
+    dd.hidden = !open
+  }
+
+  userBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    toggle()
+  })
+
+  dd.addEventListener('click', (e) => {
+    e.stopPropagation()
+    const action = e.target.closest('[data-action]')?.dataset.action
+    if (action === 'logout') {
+      if (confirm('要退出登录吗?')) {
+        if (window.RoboRealtime) RoboRealtime.disconnect()
+        RoboSession.clear()
+        window.location.href = 'auth.html'
+      }
+    } else if (action === 'settings') {
+      alert('账户设置开发中')
+      toggle(false)
+    } else if (action === 'theme') {
+      alert('外观偏好开发中')
+      toggle(false)
+    }
+  })
+
+  document.addEventListener('click', () => toggle(false))
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') toggle(false)
+  })
+}
+
+buildUserDropdown()
+
+// 通知按钮由 notifications.js (RoboNotify) 接管
 
 // 显示用户名
-const userName = localStorage.getItem('rn_user_name') || 'Austin'
 const userNameEl = document.querySelector('.user-name')
 const userAvatarEl = document.querySelector('.user-avatar')
 if (userNameEl) userNameEl.textContent = userName

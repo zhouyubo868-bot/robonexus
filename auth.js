@@ -11,9 +11,13 @@ const pageSubtitle = document.getElementById('page-subtitle')
 const loginForm = document.getElementById('login-form')
 const signupForm = document.getElementById('signup-form')
 const forgotForm = document.getElementById('forgot-form')
+const verifyForm = document.getElementById('verify-form')
 const oauthSection = document.getElementById('oauth-section')
 const footerHint = document.getElementById('footer-hint')
 const sentNote = document.getElementById('sent-note')
+
+// 验证码流程的上下文(从 login/signup 带过来)
+let verifyContext = null // { purpose: 'email'|'2fa', email, name, pendingToken }
 
 // 切换模式
 function switchMode(mode) {
@@ -24,6 +28,7 @@ function switchMode(mode) {
   loginForm.hidden = true
   signupForm.hidden = true
   forgotForm.hidden = true
+  verifyForm.hidden = true
 
   // 更新标题和显示对应表单
   if (mode === 'login') {
@@ -31,19 +36,33 @@ function switchMode(mode) {
     pageSubtitle.textContent = '登录机器人控制台'
     loginForm.hidden = false
     oauthSection.hidden = false
+    footerHint.hidden = false
     footerHint.innerHTML = '还没有账户？<a href="#" data-switch="signup">立即注册</a>'
   } else if (mode === 'signup') {
     pageTitle.textContent = '创建账户'
     pageSubtitle.textContent = '加入 RoboNexus 机器人控制台'
     signupForm.hidden = false
     oauthSection.hidden = true
+    footerHint.hidden = false
     footerHint.innerHTML = '已有账户？<a href="#" data-switch="login">返回登录</a>'
   } else if (mode === 'forgot') {
     pageTitle.textContent = '找回密码'
     pageSubtitle.textContent = '输入邮箱，我们会发送重置链接'
     forgotForm.hidden = false
     oauthSection.hidden = true
+    footerHint.hidden = false
     footerHint.innerHTML = '想起来了？<a href="#" data-switch="login">返回登录</a>'
+  } else if (mode === 'verify') {
+    pageTitle.textContent = verifyContext?.purpose === '2fa' ? '双因素验证' : '验证邮箱'
+    pageSubtitle.textContent = verifyContext?.purpose === '2fa'
+      ? '请输入身份验证器或短信中的验证码'
+      : '请输入发送到邮箱的验证码以激活账户'
+    verifyForm.hidden = false
+    oauthSection.hidden = true
+    footerHint.hidden = false
+    footerHint.innerHTML = '<a href="#" data-switch="login">返回登录</a>'
+    document.getElementById('verify-code').value = ''
+    document.getElementById('verify-code').focus()
   }
 }
 
@@ -125,16 +144,24 @@ loginForm.addEventListener('submit', async (e) => {
 
   try {
     const result = await RoboAPI.login(email, password)
-    RoboSession.save(result)
 
-    // 记住我：保存或清除邮箱
+    // 记住我:保存或清除邮箱(无论是否需要 2FA 都先记住)
     if (rememberCheckbox.checked) {
       localStorage.setItem('rn_remember_email', email)
     } else {
       localStorage.removeItem('rn_remember_email')
     }
 
-    // 跳转到控制台
+    // 账户开启了 2FA:进入验证码步骤,不直接登录
+    if (result.requiresTwoFactor) {
+      verifyContext = { purpose: '2fa', email: result.email || email, name: result.name, pendingToken: result.pendingToken }
+      startVerify()
+      submitBtn.disabled = false
+      submitBtn.textContent = '登录'
+      return
+    }
+
+    RoboSession.save(result)
     window.location.href = 'dashboard.html'
   } catch (err) {
     setError(loginPassword, loginPasswordError, err.message || '登录失败')
@@ -221,9 +248,17 @@ signupForm.addEventListener('submit', async (e) => {
 
   try {
     const result = await RoboAPI.signup(name, email, password)
-    RoboSession.save(result)
 
-    // 跳转到控制台
+    // 注册后需要邮箱验证:进入验证码步骤
+    if (result.requiresEmailVerification) {
+      verifyContext = { purpose: 'email', email: result.email || email, name: result.name || name, pendingToken: result.pendingToken }
+      startVerify()
+      submitBtn.disabled = false
+      submitBtn.textContent = '注册'
+      return
+    }
+
+    RoboSession.save(result)
     window.location.href = 'dashboard.html'
   } catch (err) {
     setError(signupEmail, signupEmailError, err.message || '注册失败')
@@ -269,6 +304,76 @@ forgotForm.addEventListener('submit', async (e) => {
   sentNote.hidden = false
   submitBtn.disabled = false
   submitBtn.textContent = '发送重置链接'
+})
+
+// ========== 验证码流程 (邮箱验证 / 2FA) ==========
+const verifyCode = document.getElementById('verify-code')
+const verifyCodeError = document.getElementById('verify-code-error')
+const verifyHint = document.getElementById('verify-hint')
+
+// 进入验证码步骤
+function startVerify() {
+  const isMock = typeof USE_MOCK !== 'undefined' && USE_MOCK
+  const target = verifyContext?.email || '你的邮箱'
+  if (verifyContext?.purpose === '2fa') {
+    verifyHint.innerHTML = `请输入 <strong>${target}</strong> 绑定的双因素验证码`
+  } else {
+    verifyHint.innerHTML = `验证码已发送至 <strong>${target}</strong>，请查收`
+  }
+  // mock 模式下提示演示验证码,方便体验
+  if (isMock) {
+    verifyHint.innerHTML += '<br><span style="color: var(--primary);">演示验证码：123456</span>'
+  }
+  switchMode('verify')
+}
+
+// 只允许输入数字
+verifyCode.addEventListener('input', () => {
+  verifyCode.value = verifyCode.value.replace(/\D/g, '')
+  setError(verifyCode, verifyCodeError, '')
+})
+
+verifyForm.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const code = verifyCode.value.trim()
+  if (code.length !== 6) {
+    setError(verifyCode, verifyCodeError, '请输入 6 位验证码')
+    return
+  }
+
+  const submitBtn = verifyForm.querySelector('.submit-btn')
+  submitBtn.disabled = true
+  submitBtn.textContent = '验证中…'
+
+  try {
+    const result = await RoboAPI.verifyCode({
+      email: verifyContext?.email,
+      code,
+      pendingToken: verifyContext?.pendingToken,
+      purpose: verifyContext?.purpose,
+    })
+    RoboSession.save(result)
+    window.location.href = 'dashboard.html'
+  } catch (err) {
+    setError(verifyCode, verifyCodeError, err.message || '验证失败')
+    submitBtn.disabled = false
+    submitBtn.textContent = '验证并继续'
+  }
+})
+
+// 重发验证码
+document.getElementById('resend-code').addEventListener('click', async (e) => {
+  e.preventDefault()
+  const link = e.target
+  link.textContent = '发送中…'
+  try {
+    await RoboAPI.resendCode({ email: verifyContext?.email, purpose: verifyContext?.purpose })
+    link.textContent = '已重新发送'
+    setTimeout(() => { link.textContent = '重新发送' }, 3000)
+  } catch (err) {
+    link.textContent = '重新发送'
+    setError(verifyCode, verifyCodeError, err.message || '发送失败')
+  }
 })
 
 // ========== 第三方登录 ==========

@@ -106,6 +106,26 @@
           </p>
         </form>
 
+        <!-- 验证码表单 (邮箱验证 / 2FA) -->
+        <form id="verify-form" class="auth-form" novalidate hidden>
+          <p class="form-note" id="verify-hint" style="margin-bottom: 16px;">
+            验证码已发送至你的邮箱
+          </p>
+          <label class="field">
+            <span class="field-label">6 位验证码</span>
+            <input id="verify-code" type="text" inputmode="numeric" maxlength="6"
+                   placeholder="------" autocomplete="one-time-code"
+                   style="letter-spacing: 8px; text-align: center; font-size: 20px;" />
+            <span class="field-error" id="verify-code-error"></span>
+          </label>
+
+          <button type="submit" class="submit-btn">验证并继续</button>
+
+          <p class="signup-hint">
+            没收到验证码？<a href="#" id="resend-code">重新发送</a>
+          </p>
+        </form>
+
         <!-- OAuth 第三方登录 (仅在登录模式显示) -->
         <div id="oauth-section">
           <div class="divider"><span>或使用以下方式登录</span></div>

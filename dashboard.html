@@ -62,7 +62,7 @@
             </svg>
             <span>机器人</span>
           </a>
-          <a href="#" class="nav-item">
+          <a href="#" class="nav-item" id="nav-logs">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
@@ -175,6 +175,23 @@
             <!-- 机器人卡片将由 JS 动态生成 -->
           </div>
         </div>
+
+        <!-- 任务调度 -->
+        <div class="section">
+          <div class="section-header">
+            <h2>任务调度</h2>
+            <button class="btn-primary" id="new-task-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              新建任务
+            </button>
+          </div>
+          <div class="task-table" id="task-container">
+            <!-- 任务行由 JS 动态生成 -->
+          </div>
+        </div>
       </main>
     </div>
 
@@ -198,8 +215,65 @@
       </div>
     </div>
 
+    <!-- 新建任务模态框 -->
+    <div class="detail-overlay" id="task-overlay" hidden>
+      <div class="detail-modal" style="max-width: 420px;">
+        <div class="detail-header">
+          <div class="detail-title"><h2>新建任务</h2></div>
+          <button class="detail-close" id="task-close" aria-label="关闭">×</button>
+        </div>
+        <div class="detail-body">
+          <label class="task-field">
+            <span>选择机器人</span>
+            <select id="task-robot"></select>
+          </label>
+          <label class="task-field">
+            <span>任务类型</span>
+            <select id="task-type">
+              <option value="巡检">巡检</option>
+              <option value="搬运">搬运</option>
+              <option value="清扫">清扫</option>
+              <option value="数据采集">数据采集</option>
+              <option value="充电">充电</option>
+              <option value="远程升级">远程升级</option>
+            </select>
+          </label>
+        </div>
+        <div class="detail-actions">
+          <button class="btn-secondary" id="task-cancel">取消</button>
+          <button class="btn-primary" id="task-submit">下发任务</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 日志查询抽屉 -->
+    <div class="log-drawer-overlay" id="log-overlay" hidden></div>
+    <aside class="log-drawer" id="log-drawer" hidden>
+      <div class="log-drawer-head">
+        <h2>运行日志</h2>
+        <button class="detail-close" id="log-close" aria-label="关闭">×</button>
+      </div>
+      <div class="log-filters">
+        <select id="log-filter-robot"><option value="">全部机器人</option></select>
+        <select id="log-filter-level">
+          <option value="">全部级别</option>
+          <option value="info">信息</option>
+          <option value="warn">警告</option>
+          <option value="error">错误</option>
+        </select>
+        <input type="text" id="log-filter-keyword" placeholder="搜索消息关键词…" />
+      </div>
+      <div class="log-list" id="log-list">
+        <!-- 日志条目由 JS 渲染 -->
+      </div>
+    </aside>
+
     <script src="api.js"></script>
+    <script src="realtime.js"></script>
+    <script src="notifications.js"></script>
     <script src="robot-parts.js"></script>
     <script src="dashboard.js"></script>
+    <script src="tasks.js"></script>
+    <script src="logs.js"></script>
   </body>
 </html>
