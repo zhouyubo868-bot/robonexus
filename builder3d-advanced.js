@@ -43,8 +43,378 @@ const PART_SPECS = {
     snapTo: null // 第一个零件，不需要吸附
   },
 
+  // ========== 底盘附件（4 种配件增强结构）==========
+  'bumper-front': {
+    name: '前保险杠',
+    desc: '安装到底盘前端',
+    category: 'chassis',
+    create: () => {
+      const group = new THREE.Group()
+      const bar = new THREE.Mesh(
+        new THREE.BoxGeometry(1.6, 0.08, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.2 })
+      )
+      bar.position.z = 1.06
+      group.add(bar)
+      // 缓冲橡胶条
+      const rubber = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 0.05, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9 })
+      )
+      rubber.position.set(0, 0, 1.12)
+      group.add(rubber)
+      // 2个固定螺丝
+      for (let x of [-0.6, 0.6]) {
+        const screw = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 0.03, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.3 })
+        )
+        screw.position.set(x, 0.04, 1.06)
+        screw.userData = { type: 'screw-point', tightened: false }
+        group.add(screw)
+      }
+      group.userData = { partType: 'bumper-front', needsScrews: 2, screwsTightened: 0 }
+      return group
+    },
+    snapTo: 'chassis-frame',
+    snapDistance: 0.35
+  },
+
+  'bumper-rear': {
+    name: '后保险杠',
+    desc: '安装到底盘后端',
+    category: 'chassis',
+    create: () => {
+      const group = new THREE.Group()
+      const bar = new THREE.Mesh(
+        new THREE.BoxGeometry(1.6, 0.08, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.2 })
+      )
+      bar.position.z = -1.06
+      group.add(bar)
+      const rubber = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 0.05, 0.08),
+        new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9 })
+      )
+      rubber.position.set(0, 0, -1.12)
+      group.add(rubber)
+      for (let x of [-0.6, 0.6]) {
+        const screw = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 0.03, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.3 })
+        )
+        screw.position.set(x, 0.04, -1.06)
+        screw.userData = { type: 'screw-point', tightened: false }
+        group.add(screw)
+      }
+      group.userData = { partType: 'bumper-rear', needsScrews: 2, screwsTightened: 0 }
+      return group
+    },
+    snapTo: 'chassis-frame',
+    snapDistance: 0.35
+  },
+
+  'side-plate-left': {
+    name: '左侧护板',
+    desc: '加强侧面结构',
+    category: 'chassis',
+    create: () => {
+      const group = new THREE.Group()
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.2, 1.8),
+        new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.75, roughness: 0.3 })
+      )
+      plate.position.x = 0.79
+      plate.position.y = 0.025
+      group.add(plate)
+      // 散热孔（装饰）
+      for (let z = -0.6; z <= 0.6; z += 0.3) {
+        const hole = new THREE.Mesh(
+          new THREE.CircleGeometry(0.04, 12),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a, side: THREE.DoubleSide })
+        )
+        hole.position.set(0.8, 0.025, z)
+        hole.rotation.y = Math.PI / 2
+        group.add(hole)
+      }
+      for (let z of [-0.7, 0.7]) {
+        const screw = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.012, 0.025, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.3 })
+        )
+        screw.position.set(0.79, 0.1, z)
+        screw.userData = { type: 'screw-point', tightened: false }
+        group.add(screw)
+      }
+      group.userData = { partType: 'side-plate-left', needsScrews: 2, screwsTightened: 0 }
+      return group
+    },
+    snapTo: 'chassis-frame',
+    snapDistance: 0.3
+  },
+
+  'side-plate-right': {
+    name: '右侧护板',
+    desc: '加强侧面结构',
+    category: 'chassis',
+    create: () => {
+      const group = new THREE.Group()
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.2, 1.8),
+        new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.75, roughness: 0.3 })
+      )
+      plate.position.x = -0.79
+      plate.position.y = 0.025
+      group.add(plate)
+      for (let z = -0.6; z <= 0.6; z += 0.3) {
+        const hole = new THREE.Mesh(
+          new THREE.CircleGeometry(0.04, 12),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a, side: THREE.DoubleSide })
+        )
+        hole.position.set(-0.8, 0.025, z)
+        hole.rotation.y = Math.PI / 2
+        group.add(hole)
+      }
+      for (let z of [-0.7, 0.7]) {
+        const screw = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.012, 0.025, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.3 })
+        )
+        screw.position.set(-0.79, 0.1, z)
+        screw.userData = { type: 'screw-point', tightened: false }
+        group.add(screw)
+      }
+      group.userData = { partType: 'side-plate-right', needsScrews: 2, screwsTightened: 0 }
+      return group
+    },
+    snapTo: 'chassis-frame',
+    snapDistance: 0.3
+  },
+
+  // ========== 轮子组件（6 个子零件，需按顺序组装）==========
+  // 组装链:chassis-frame → hub → bearing → axle → tire → cap (4 颗螺丝)
+  'hub': {
+    name: '轮毂',
+    desc: '吸附到底盘 4 个安装孔之一',
+    category: 'wheel',
+    create: () => {
+      const group = new THREE.Group()
+      // 主体:轮辐圆环
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.16, 0.04, 12, 24),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85, roughness: 0.25 })
+      )
+      rim.rotation.y = Math.PI / 2
+      group.add(rim)
+      // 5 根辐条
+      for (let i = 0; i < 5; i++) {
+        const spoke = new THREE.Mesh(
+          new THREE.BoxGeometry(0.025, 0.32, 0.02),
+          new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7 })
+        )
+        spoke.rotation.x = (i / 5) * Math.PI
+        group.add(spoke)
+      }
+      // 中心孔标记(用于轴承吸附)
+      const centerHole = new THREE.Mesh(
+        new THREE.CircleGeometry(0.05, 16),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, side: THREE.DoubleSide })
+      )
+      centerHole.rotation.y = Math.PI / 2
+      group.add(centerHole)
+
+      group.userData = {
+        partType: 'hub',
+        snapPoints: [[0, 0, 0]] // 中心点供轴承吸附
+      }
+      return group
+    },
+    snapTo: 'chassis-frame',
+    snapDistance: 0.3
+  },
+
+  'bearing': {
+    name: '轴承',
+    desc: '装入轮毂中心孔',
+    category: 'wheel',
+    create: () => {
+      const group = new THREE.Group()
+      // 外圈
+      const outer = new THREE.Mesh(
+        new THREE.TorusGeometry(0.05, 0.012, 8, 16),
+        new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.9, roughness: 0.15 })
+      )
+      outer.rotation.y = Math.PI / 2
+      group.add(outer)
+      // 内圈
+      const inner = new THREE.Mesh(
+        new THREE.TorusGeometry(0.025, 0.008, 8, 16),
+        new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.95 })
+      )
+      inner.rotation.y = Math.PI / 2
+      group.add(inner)
+
+      group.userData = {
+        partType: 'bearing',
+        snapPoints: [[0, 0, 0]]
+      }
+      return group
+    },
+    snapTo: 'hub',
+    snapDistance: 0.15
+  },
+
+  'axle': {
+    name: '轴心',
+    desc: '穿过轴承固定轮毂',
+    category: 'wheel',
+    create: () => {
+      const group = new THREE.Group()
+      const rod = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.022, 0.022, 0.18, 12),
+        new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.95, roughness: 0.1 })
+      )
+      rod.rotation.z = Math.PI / 2
+      group.add(rod)
+      // 两端凸缘
+      const flangeMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9 })
+      const f1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.015, 12), flangeMat)
+      f1.rotation.z = Math.PI / 2
+      f1.position.x = 0.085
+      group.add(f1)
+      const f2 = f1.clone()
+      f2.position.x = -0.085
+      group.add(f2)
+
+      group.userData = {
+        partType: 'axle',
+        snapPoints: [[0, 0, 0]]
+      }
+      return group
+    },
+    snapTo: 'bearing',
+    snapDistance: 0.15
+  },
+
+  'tire': {
+    name: '轮胎',
+    desc: '橡胶外胎,套在轮毂外侧',
+    category: 'wheel',
+    create: () => {
+      const group = new THREE.Group()
+      // 橡胶圈
+      const rubber = new THREE.Mesh(
+        new THREE.TorusGeometry(0.21, 0.06, 16, 32),
+        new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.05, roughness: 0.95 })
+      )
+      rubber.rotation.y = Math.PI / 2
+      group.add(rubber)
+      // 胎面纹路(几条凸起小盒子)
+      for (let i = 0; i < 12; i++) {
+        const tread = new THREE.Mesh(
+          new THREE.BoxGeometry(0.03, 0.04, 0.05),
+          new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 1 })
+        )
+        const a = (i / 12) * Math.PI * 2
+        tread.position.set(0, Math.cos(a) * 0.245, Math.sin(a) * 0.245)
+        tread.rotation.x = a
+        group.add(tread)
+      }
+      // 4 个螺丝孔(供 wheel-screw 吸附)
+      const screwPositions = []
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4
+        screwPositions.push([0.06, Math.cos(a) * 0.13, Math.sin(a) * 0.13])
+      }
+
+      group.userData = {
+        partType: 'tire',
+        snapPoints: screwPositions
+      }
+      return group
+    },
+    snapTo: 'axle',
+    snapDistance: 0.18
+  },
+
+  'wheel-screw': {
+    name: '轮胎螺丝',
+    desc: '4 颗螺丝固定轮胎',
+    category: 'wheel',
+    create: () => {
+      const group = new THREE.Group()
+      // 螺丝头(六角)
+      const head = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.012, 6),
+        new THREE.MeshStandardMaterial({
+          color: 0xfbbf24,
+          metalness: 0.85,
+          emissive: 0xfbbf24,
+          emissiveIntensity: 0.3
+        })
+      )
+      head.rotation.z = Math.PI / 2
+      head.userData = { type: 'screw-point', tightened: false }
+      group.add(head)
+      // 螺杆
+      const shaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.008, 0.008, 0.025, 8),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9 })
+      )
+      shaft.rotation.z = Math.PI / 2
+      shaft.position.x = -0.018
+      group.add(shaft)
+
+      group.userData = {
+        partType: 'wheel-screw',
+        needsScrews: 1,
+        screwsTightened: 0
+      }
+      return group
+    },
+    snapTo: 'tire',
+    snapDistance: 0.1
+  },
+
+  'wheel-cap': {
+    name: '轮盖',
+    desc: '装饰性中心盖,完成轮子组装',
+    category: 'wheel',
+    create: () => {
+      const group = new THREE.Group()
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshStandardMaterial({
+          color: 0x06b6d4,
+          metalness: 0.9,
+          roughness: 0.1,
+          emissive: 0x06b6d4,
+          emissiveIntensity: 0.15
+        })
+      )
+      cap.rotation.z = -Math.PI / 2
+      group.add(cap)
+      // 中心 logo 圆点
+      const dot = new THREE.Mesh(
+        new THREE.CircleGeometry(0.02, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffffff })
+      )
+      dot.rotation.y = Math.PI / 2
+      dot.position.x = 0.001
+      group.add(dot)
+
+      group.userData = { partType: 'wheel-cap' }
+      return group
+    },
+    snapTo: 'tire',
+    snapDistance: 0.1
+  },
+
+  // ========== 兼容老版本 wheel(整体轮子,留作快速搭建用) ==========
   'wheel': {
-    name: '轮子',
+    name: '轮子(整体)',
+    desc: '快速模式:一次安装整个轮子',
+    category: 'wheel',
     create: () => {
       const group = new THREE.Group()
       const wheel = new THREE.Mesh(
