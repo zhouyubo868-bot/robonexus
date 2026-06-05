@@ -444,15 +444,24 @@ function initDragDrop() {
   const partItems = document.querySelectorAll('.part-item')
 
   partItems.forEach(item => {
+    // HTML5 拖拽要求显式声明 draggable,否则 dragstart 不会触发
+    item.setAttribute('draggable', 'true')
+
     item.addEventListener('dragstart', (e) => {
       draggedPartData = {
         type: item.dataset.type,
         id: item.dataset.id
       }
+      console.log('开始拖拽:', draggedPartData)
+      // 部分浏览器要求 setData 才会真正进入拖拽
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'copy'
+        e.dataTransfer.setData('text/plain', `${item.dataset.type}:${item.dataset.id}`)
+      }
       item.style.opacity = '0.5'
     })
 
-    item.addEventListener('dragend', (e) => {
+    item.addEventListener('dragend', () => {
       item.style.opacity = '1'
       draggedPartData = null
     })
