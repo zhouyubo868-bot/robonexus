@@ -1,4 +1,5 @@
-'use strict'
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
 // ==================== 全局变量 ====================
 let scene, camera, renderer, controls
@@ -319,11 +320,18 @@ function init() {
   container.appendChild(renderer.domElement)
 
   // 轨道控制
-  controls = new THREE.OrbitControls(camera, renderer.domElement)
+  controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.05
   controls.maxDistance = 20
   controls.minDistance = 2
+  // 用户交互期间暂停自动旋转(让 animate 知道)
+  controls._userInteracting = false
+  controls.addEventListener('start', () => { controls._userInteracting = true })
+  controls.addEventListener('end', () => {
+    // 松开后停一会儿再恢复自转,避免立刻自转破坏定格视角
+    setTimeout(() => { controls._userInteracting = false }, 1500)
+  })
 
   // 光照
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.4)
@@ -343,6 +351,11 @@ function init() {
   // 网格地面
   const gridHelper = new THREE.GridHelper(20, 20, 0x334155, 0x1e293b)
   scene.add(gridHelper)
+
+  // 坐标轴指示器(场景一角的小标识,帮助识别朝向)
+  const axesHelper = new THREE.AxesHelper(0.6)
+  axesHelper.position.set(-9, 0.05, -9)
+  scene.add(axesHelper)
 
   // 组装平台
   const platform = new THREE.Mesh(
@@ -379,8 +392,47 @@ function onWindowResize() {
   renderer.setSize(container.clientWidth, container.clientHeight)
 }
 
+const clock = new THREE.Clock()
+
 function animate() {
   requestAnimationFrame(animate)
+  const t = clock.getElapsedTime()
+  const dt = clock.getDelta()
+
+  // 元件级动态效果：旋转、呼吸发光
+  if (robot && robot.parts) {
+    robot.parts.forEach((part) => {
+      const id = part.userData.id
+      // 激光雷达：顶部旋转
+      if (id === 'lidar') {
+        part.rotation.y += dt * 2
+      }
+      // 悬浮底盘:发光环呼吸 + 整体微浮动
+      if (id === 'hover') {
+        part.position.y = (part._baseY ?? part.position.y) + Math.sin(t * 2) * 0.05
+        if (part._baseY === undefined) part._baseY = part.position.y
+        part.traverse((m) => {
+          if (m.isMesh && m.material.emissive && m.material.emissive.getHex() !== 0) {
+            m.material.emissiveIntensity = 0.4 + Math.sin(t * 3) * 0.3
+          }
+        })
+      }
+      // AI 芯片:发光脉冲
+      if (id === 'ai') {
+        part.traverse((m) => {
+          if (m.isMesh && m.material.emissive && m.material.emissive.getHex() !== 0) {
+            m.material.emissiveIntensity = 0.3 + Math.sin(t * 4) * 0.25
+          }
+        })
+      }
+    })
+
+    // 机器人完成后(>=4 个元件)整体缓慢自转,展示效果
+    if (robot.parts.length >= 4 && !controls._userInteracting) {
+      robot.group.rotation.y += dt * 0.2
+    }
+  }
+
   controls.update()
   renderer.render(scene, camera)
 }
@@ -519,11 +571,13 @@ function selectPart(part) {
   deselectPart()
   selectedPart = part
 
-  // 高亮效果
+  // 高亮效果(保存原始 emissive 以便取消时恢复)
   part.traverse(child => {
-    if (child.isMesh) {
+    if (child.isMesh && child.material) {
+      child.userData._origEmissive = child.material.emissive.getHex()
+      child.userData._origEmissiveIntensity = child.material.emissiveIntensity ?? 0
       child.material.emissive = new THREE.Color(0x3b82f6)
-      child.material.emissiveIntensity = 0.3
+      child.material.emissiveIntensity = 0.5
     }
   })
 
@@ -534,9 +588,17 @@ function selectPart(part) {
 function deselectPart() {
   if (selectedPart) {
     selectedPart.traverse(child => {
-      if (child.isMesh) {
-        child.material.emissive = new THREE.Color(0x000000)
-        child.material.emissiveIntensity = 0
+      if (child.isMesh && child.material) {
+        // 恢复原始发光(AI 芯片、悬浮底盘的发光环不会丢)
+        if (child.userData._origEmissive !== undefined) {
+          child.material.emissive = new THREE.Color(child.userData._origEmissive)
+          child.material.emissiveIntensity = child.userData._origEmissiveIntensity
+          delete child.userData._origEmissive
+          delete child.userData._origEmissiveIntensity
+        } else {
+          child.material.emissive = new THREE.Color(0x000000)
+          child.material.emissiveIntensity = 0
+        }
       }
     })
     selectedPart = null
