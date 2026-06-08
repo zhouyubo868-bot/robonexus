@@ -1366,15 +1366,21 @@ const clock = new THREE.Clock()
 
 function animate() {
   requestAnimationFrame(animate)
+  const dt = clock.getDelta()
   const t = clock.getElapsedTime()
 
-  // 未固定零件的抖动提示
-  installedParts.forEach(part => {
-    if (part.userData.needsScrews && part.userData.screwsTightened < part.userData.needsScrews) {
-      part.position.y = (part._baseY ?? part.position.y) + Math.sin(t * 8) * 0.01
-      if (part._baseY === undefined) part._baseY = part.position.y
-    }
-  })
+  // 测试模式优先
+  if (typeof testState !== 'undefined' && testState && testState.active) {
+    updateTestMode(dt)
+  } else {
+    // 未固定零件的抖动提示
+    installedParts.forEach(part => {
+      if (part.userData.needsScrews && part.userData.screwsTightened < part.userData.needsScrews) {
+        part.position.y = (part._baseY ?? part.position.y) + Math.sin(t * 8) * 0.01
+        if (part._baseY === undefined) part._baseY = part.position.y
+      }
+    })
+  }
 
   controls.update()
   renderer.render(scene, camera)
@@ -1530,9 +1536,21 @@ function initTools() {
 
   toolBtns.forEach(btn => {
     btn.addEventListener('click', () => {
+      const newTool = btn.dataset.tool
+
+      // 切换到 test → 进入测试模式
+      if (newTool === 'test' && currentTool !== 'test') {
+        const ok = enterTestMode()
+        if (!ok) return // 测试启动失败,不切换工具
+      }
+      // 离开 test → 退出测试模式
+      if (currentTool === 'test' && newTool !== 'test') {
+        exitTestMode()
+      }
+
       toolBtns.forEach(b => b.classList.remove('active'))
       btn.classList.add('active')
-      currentTool = btn.dataset.tool
+      currentTool = newTool
       console.log('切换工具:', currentTool)
       updateHint()
     })
@@ -1594,9 +1612,8 @@ function handleToolAction(part, clickedMesh) {
     }
   } else if (currentTool === 'wrench') {
     console.log('扳手工具 - 调整角度（开发中）')
-  } else if (currentTool === 'test') {
-    console.log('测试模式（开发中）')
   }
+  // test 工具的进入/退出由 initTools 切换时处理
 }
 
 function animateScrewTighten(screwMesh, onComplete) {
@@ -1636,6 +1653,460 @@ function updateHint() {
   }
   document.getElementById('hint-box').textContent = hints[currentTool] || ''
 }
+
+// ==================== 测试模式 ====================
+// 切换到测试工具时,加载测试场景,机器人按零件配置执行任务,完成后给出评分
+
+let testState = {
+  active: false,
+  paused: false,
+  startTime: 0,
+  elapsedMs: 0,
+  speed: 0,
+  distance: 0,
+  integrity: 100,
+  mission: '巡线测试',
+  testGroup: null, // 测试场景的 3D 组(轨道/障碍物)
+  trackPath: null, // 机器人沿此曲线移动
+  pathProgress: 0, // 0..1
+  pathSpeed: 0.04, // 单位/秒,根据零件计算
+  detached: [], // 已脱落零件
+  preTestState: null, // 进入测试前的场景状态(机器人位置/旋转)
+  preCameraState: null
+}
+
+// 检查机器人是否能通过测试(分析已安装零件)
+function analyzeRobot() {
+  const types = installedParts.map(p => p.userData.partType)
+
+  const hasChassis = types.includes('chassis-frame')
+  // 轮子:精细 4 个轮毂 + 4 个轮胎,或快速 4 个整体轮
+  const hubCount = types.filter(t => t === 'hub').length
+  const tireCount = types.filter(t => t === 'tire').length
+  const wheelQuickCount = types.filter(t => t === 'wheel').length
+  const wheelComplete = Math.min(hubCount, tireCount) + wheelQuickCount
+
+  // 电机:精细外壳 或 整体电机
+  const motorCount = types.filter(t => t === 'motor-housing' || t === 'motor').length
+
+  // 控制器:精细 PCB + CPU 或整体
+  const hasController = types.includes('pcb-board') || types.includes('controller')
+  const hasCPU = types.includes('cpu-chip') || types.includes('controller')
+
+  // 传感器(可选,但加分)
+  const hasCamera = types.includes('lens') || types.includes('camera')
+
+  // 电池(必需)
+  const hasBattery = types.includes('battery')
+
+  // 螺丝完整性:统计未拧紧的螺丝
+  let totalScrews = 0
+  let tightScrews = 0
+  installedParts.forEach(p => {
+    if (p.userData.needsScrews) {
+      totalScrews += p.userData.needsScrews
+      tightScrews += p.userData.screwsTightened || 0
+    }
+  })
+  const screwIntegrity = totalScrews === 0 ? 100 : Math.round((tightScrews / totalScrews) * 100)
+
+  return {
+    hasChassis,
+    wheelComplete,
+    motorCount,
+    hasController,
+    hasCPU,
+    hasCamera,
+    hasBattery,
+    totalScrews,
+    tightScrews,
+    screwIntegrity,
+    canRun: hasChassis && wheelComplete >= 4 && motorCount >= 1 && hasController && hasBattery,
+    issues: []
+  }
+}
+
+function enterTestMode() {
+  const analysis = analyzeRobot()
+
+  // 检查是否能运行
+  if (!analysis.canRun) {
+    const missing = []
+    if (!analysis.hasChassis) missing.push('底盘框架')
+    if (analysis.wheelComplete < 4) missing.push(`完整轮子(已装 ${analysis.wheelComplete}/4)`)
+    if (analysis.motorCount < 1) missing.push('至少 1 个电机')
+    if (!analysis.hasController) missing.push('控制器(PCB或主控芯片)')
+    if (!analysis.hasBattery) missing.push('电池组')
+    alert('⚠️ 机器人无法启动测试,缺少:\n\n• ' + missing.join('\n• ') + '\n\n请先完成基本组装')
+    return false
+  }
+
+  console.log('进入测试模式,机器人分析:', analysis)
+
+  // 保存当前状态
+  testState.preTestState = {
+    robotX: 0, robotY: 0, robotZ: 0
+  }
+  testState.preCameraState = {
+    pos: camera.position.clone(),
+    target: controls.target.clone()
+  }
+
+  // 创建测试场景(3D 轨道 + 障碍物)
+  buildTestScene()
+
+  // 计算运行速度(根据零件)
+  // 基础速度 0.03,每个轮子 +0.005,有 AI 芯片 +0.01,螺丝完整性影响
+  let baseSpeed = 0.025 + 0.005 * analysis.motorCount
+  if (analysis.hasCPU) baseSpeed += 0.005
+  if (analysis.hasCamera) baseSpeed += 0.005
+  baseSpeed *= analysis.screwIntegrity / 100
+  testState.pathSpeed = baseSpeed
+
+  // 重置状态
+  testState.active = true
+  testState.paused = false
+  testState.startTime = Date.now()
+  testState.elapsedMs = 0
+  testState.distance = 0
+  testState.pathProgress = 0
+  testState.integrity = analysis.screwIntegrity
+  testState.detached = []
+  testState.mission = analysis.hasCamera ? '巡线 + 避障测试' : '巡线测试'
+
+  // 移动机器人到起点
+  const startPoint = testState.trackPath.getPointAt(0)
+  installedParts.forEach(p => {
+    if (!p._origPos) p._origPos = p.position.clone()
+  })
+
+  // 显示 HUD
+  document.getElementById('test-hud').classList.add('active')
+  document.getElementById('test-mission').textContent = testState.mission
+  document.getElementById('test-integrity').textContent = `${testState.integrity}%`
+  document.getElementById('test-integrity').className =
+    'test-stat-value ' + (testState.integrity >= 90 ? 'good' : testState.integrity >= 70 ? 'warn' : 'bad')
+
+  // 相机切换到追逐视角
+  camera.position.set(startPoint.x - 3, 2.5, startPoint.z + 3)
+  controls.target.copy(startPoint)
+
+  return true
+}
+
+function exitTestMode() {
+  testState.active = false
+  testState.paused = false
+
+  // 移除测试场景
+  if (testState.testGroup) {
+    scene.remove(testState.testGroup)
+    testState.testGroup = null
+    testState.trackPath = null
+  }
+
+  // 把机器人元件还原到原位
+  installedParts.forEach(p => {
+    if (p._origPos) {
+      p.position.copy(p._origPos)
+      delete p._origPos
+    }
+    if (p._origRot) {
+      p.rotation.copy(p._origRot)
+      delete p._origRot
+    }
+    p.visible = true
+  })
+  // 把脱落零件还原
+  testState.detached.forEach(item => {
+    item.part.position.copy(item.origPos)
+    item.part.rotation.set(0, 0, 0)
+    item.part.visible = true
+  })
+  testState.detached = []
+
+  // 恢复相机
+  if (testState.preCameraState) {
+    camera.position.copy(testState.preCameraState.pos)
+    controls.target.copy(testState.preCameraState.target)
+  }
+
+  // 隐藏 HUD
+  document.getElementById('test-hud').classList.remove('active')
+
+  console.log('退出测试模式')
+}
+
+// 建立测试场景:S 形赛道 + 障碍物
+function buildTestScene() {
+  const group = new THREE.Group()
+
+  // S 形赛道路径(Catmull-Rom 曲线)
+  const points = [
+    new THREE.Vector3(0, 0.05, 0),
+    new THREE.Vector3(2, 0.05, -1),
+    new THREE.Vector3(4, 0.05, 1),
+    new THREE.Vector3(6, 0.05, -1),
+    new THREE.Vector3(8, 0.05, 0),
+    new THREE.Vector3(7, 0.05, 2),
+    new THREE.Vector3(4, 0.05, 3),
+    new THREE.Vector3(1, 0.05, 2),
+    new THREE.Vector3(0, 0.05, 0)
+  ]
+  const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.5)
+  testState.trackPath = curve
+
+  // 赛道(用管道几何体可视化)
+  const tubeGeom = new THREE.TubeGeometry(curve, 100, 0.4, 8, true)
+  const tubeMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    metalness: 0.3,
+    roughness: 0.8,
+    transparent: true,
+    opacity: 0.85
+  })
+  const tube = new THREE.Mesh(tubeGeom, tubeMat)
+  tube.position.y = -0.35
+  tube.receiveShadow = true
+  group.add(tube)
+
+  // 中央巡线(发光黄线)
+  const lineGeom = new THREE.TubeGeometry(curve, 100, 0.04, 6, true)
+  const lineMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    emissive: 0xfbbf24,
+    emissiveIntensity: 0.6
+  })
+  const line = new THREE.Mesh(lineGeom, lineMat)
+  line.position.y = 0.01
+  group.add(line)
+
+  // 起点终点标志
+  const startMarker = new THREE.Mesh(
+    new THREE.RingGeometry(0.5, 0.6, 24),
+    new THREE.MeshStandardMaterial({
+      color: 0x22c55e,
+      emissive: 0x22c55e,
+      emissiveIntensity: 0.5,
+      side: THREE.DoubleSide
+    })
+  )
+  startMarker.rotation.x = -Math.PI / 2
+  startMarker.position.copy(points[0])
+  startMarker.position.y = 0.02
+  group.add(startMarker)
+
+  // 障碍物(3 个圆锥)
+  const obstacleColors = [0xef4444, 0xf59e0b, 0xa855f7]
+  ;[
+    new THREE.Vector3(3, 0, -0.2),
+    new THREE.Vector3(5.5, 0, 0.5),
+    new THREE.Vector3(2.5, 0, 2.3)
+  ].forEach((pos, i) => {
+    const cone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.18, 0.5, 12),
+      new THREE.MeshStandardMaterial({
+        color: obstacleColors[i],
+        roughness: 0.6
+      })
+    )
+    cone.position.copy(pos)
+    cone.position.y = 0.25
+    cone.castShadow = true
+    group.add(cone)
+    // 顶部条纹
+    const stripe = new THREE.Mesh(
+      new THREE.TorusGeometry(0.13, 0.02, 8, 16),
+      new THREE.MeshStandardMaterial({ color: 0xffffff })
+    )
+    stripe.rotation.x = Math.PI / 2
+    stripe.position.copy(pos)
+    stripe.position.y = 0.4
+    group.add(stripe)
+  })
+
+  testState.testGroup = group
+  scene.add(group)
+}
+
+// 测试模式每帧推进
+function updateTestMode(dt) {
+  if (!testState.active || testState.paused) return
+
+  testState.elapsedMs = Date.now() - testState.startTime
+
+  // 沿轨道前进
+  testState.pathProgress += testState.pathSpeed * dt
+  if (testState.pathProgress >= 1) {
+    testState.pathProgress = 1
+    finishTest(true)
+    return
+  }
+
+  const pos = testState.trackPath.getPointAt(testState.pathProgress)
+  const tangent = testState.trackPath.getTangentAt(testState.pathProgress).normalize()
+
+  // 把已安装零件按相对原始位置整体跟随轨道
+  // 计算偏移:零件相对原点 → 加上 pos
+  installedParts.forEach(p => {
+    if (!p._origPos) p._origPos = p.position.clone()
+    p.position.x = p._origPos.x + pos.x
+    p.position.z = p._origPos.z + pos.z
+    p.position.y = p._origPos.y + pos.y - 0.05 // 贴着赛道
+  })
+
+  // 机器人朝向:让整体面向 tangent
+  const yaw = Math.atan2(tangent.x, tangent.z)
+  installedParts.forEach(p => {
+    if (!p._origRot) p._origRot = p.rotation.clone()
+    p.rotation.y = p._origRot.y + yaw
+  })
+
+  // 实时计算速度(单位/秒)
+  testState.speed = testState.pathSpeed * testState.trackPath.getLength()
+  testState.distance = testState.pathProgress * testState.trackPath.getLength()
+
+  // 完整性下降:每秒 0.5%(模拟磨损,如果螺丝不全则更快)
+  const wearRate = testState.integrity > 80 ? 0.3 : 0.8
+  testState.integrity = Math.max(0, testState.integrity - wearRate * dt)
+
+  // 螺丝整体不到 70% 时:零件随机脱落
+  if (testState.integrity < 70 && Math.random() < dt * 0.5) {
+    detachRandomPart()
+  }
+
+  // 相机跟随
+  const camOffset = new THREE.Vector3(-tangent.z * 3, 2, tangent.x * 3)
+  const desired = pos.clone().add(camOffset)
+  camera.position.lerp(desired, 0.05)
+  controls.target.lerp(pos, 0.1)
+
+  // 更新 HUD
+  document.getElementById('test-speed').textContent = testState.speed.toFixed(2) + ' m/s'
+  document.getElementById('test-distance').textContent = testState.distance.toFixed(1) + ' m'
+  document.getElementById('test-time').textContent = (testState.elapsedMs / 1000).toFixed(1) + ' s'
+  const intText = Math.round(testState.integrity)
+  document.getElementById('test-integrity').textContent = intText + '%'
+  document.getElementById('test-integrity').className =
+    'test-stat-value ' + (intText >= 80 ? 'good' : intText >= 50 ? 'warn' : 'bad')
+
+  // 完整性归零 → 失败
+  if (testState.integrity <= 0) finishTest(false)
+}
+
+// 随机让一个未拧紧螺丝的零件脱落
+function detachRandomPart() {
+  const candidates = installedParts.filter(p => {
+    if (testState.detached.find(d => d.part === p)) return false
+    if (!p.userData.needsScrews) return false
+    return (p.userData.screwsTightened || 0) < p.userData.needsScrews
+  })
+  if (!candidates.length) return
+
+  const part = candidates[Math.floor(Math.random() * candidates.length)]
+  console.log('零件脱落:', part.userData.partType)
+  testState.detached.push({ part, origPos: part._origPos.clone() })
+
+  // 脱落动画:零件向旁边飞出
+  const dir = new THREE.Vector3(
+    (Math.random() - 0.5) * 2,
+    1,
+    (Math.random() - 0.5) * 2
+  )
+  let vy = 0.05
+  let life = 0
+  const fall = () => {
+    life += 0.016
+    if (life > 1.2) return
+    part.position.x += dir.x * 0.05
+    part.position.z += dir.z * 0.05
+    part.position.y += vy
+    vy -= 0.005
+    part.rotation.x += 0.1
+    part.rotation.z += 0.07
+    requestAnimationFrame(fall)
+  }
+  fall()
+
+  testState.integrity = Math.max(0, testState.integrity - 15) // 一次脱落扣 15%
+}
+
+function finishTest(success) {
+  testState.active = false
+
+  // 评分
+  const a = analyzeRobot()
+  const stats = {
+    distance: testState.distance,
+    timeS: testState.elapsedMs / 1000,
+    speed: testState.speed,
+    integrity: Math.round(testState.integrity),
+    detachedCount: testState.detached.length,
+    success
+  }
+
+  // 计算综合得分(0-100)
+  let score = 0
+  if (success) {
+    score += 40 // 完成 +40
+    score += Math.min(30, a.screwIntegrity * 0.3) // 螺丝完整 +30
+    score += Math.min(15, (a.motorCount + (a.hasCamera ? 1 : 0) + (a.hasCPU ? 1 : 0)) * 5)
+    score += Math.max(0, 15 - testState.detached.length * 5)
+  } else {
+    score = Math.round(testState.distance / testState.trackPath.getLength() * 40)
+  }
+  const grade = score >= 90 ? 'S' : score >= 75 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D'
+
+  // 渲染报告
+  document.getElementById('report-grade').textContent = grade
+  document.getElementById('report-grade').style.background =
+    grade === 'S' ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' :
+    grade === 'A' ? 'linear-gradient(135deg, #22c55e, #10b981)' :
+    grade === 'B' ? 'linear-gradient(135deg, #3b82f6, #8b5cf6)' :
+    grade === 'C' ? 'linear-gradient(135deg, #a855f7, #ec4899)' :
+                    'linear-gradient(135deg, #ef4444, #dc2626)'
+  document.getElementById('report-grade').style.webkitBackgroundClip = 'text'
+  document.getElementById('report-grade').style.webkitTextFillColor = 'transparent'
+
+  document.getElementById('report-title').textContent =
+    success ? `测试通过!得分 ${score}` : `测试失败!得分 ${score}`
+
+  document.getElementById('report-stats').innerHTML = `
+    <div>距离: <strong>${stats.distance.toFixed(1)} m</strong></div>
+    <div>用时: <strong>${stats.timeS.toFixed(1)} s</strong></div>
+    <div>平均速度: <strong>${stats.speed.toFixed(2)} m/s</strong></div>
+    <div>结构完整性: <strong>${stats.integrity}%</strong></div>
+    <div>脱落零件: <strong>${stats.detachedCount} 件</strong></div>
+  `
+
+  document.getElementById('report-checklist').innerHTML = `
+    <div class="${a.hasChassis ? 'ok' : 'fail'}">底盘框架</div>
+    <div class="${a.wheelComplete >= 4 ? 'ok' : 'fail'}">4 个完整轮子 (${a.wheelComplete}/4)</div>
+    <div class="${a.motorCount >= 4 ? 'ok' : a.motorCount >= 1 ? 'ok' : 'fail'}">电机 (${a.motorCount} 个)</div>
+    <div class="${a.hasController ? 'ok' : 'fail'}">控制器</div>
+    <div class="${a.hasBattery ? 'ok' : 'fail'}">电池组</div>
+    <div class="${a.hasCamera ? 'ok' : 'fail'}">视觉相机 (可选,加分)</div>
+    <div class="${a.screwIntegrity >= 90 ? 'ok' : 'fail'}">螺丝拧紧度: ${a.screwIntegrity}%</div>
+  `
+
+  document.getElementById('test-report').classList.add('active')
+}
+
+// 关闭报告 → 退出测试
+document.getElementById('report-close')?.addEventListener('click', () => {
+  document.getElementById('test-report').classList.remove('active')
+  // 自动切回 hand 工具
+  document.querySelector('.tool-btn[data-tool="hand"]').click()
+})
+
+// 暂停 / 结束
+document.getElementById('test-pause')?.addEventListener('click', () => {
+  testState.paused = !testState.paused
+  document.getElementById('test-pause').textContent = testState.paused ? '继续' : '暂停'
+})
+document.getElementById('test-stop')?.addEventListener('click', () => {
+  finishTest(false)
+})
 
 // ==================== 启动 ====================
 init()
