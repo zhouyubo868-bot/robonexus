@@ -1672,7 +1672,298 @@ let testState = {
   pathSpeed: 0.04, // 单位/秒,根据零件计算
   detached: [], // 已脱落零件
   preTestState: null, // 进入测试前的场景状态(机器人位置/旋转)
-  preCameraState: null
+  preCameraState: null,
+  missionId: 'line-following',
+  obstacleHits: 0, // 避障任务:撞击次数
+  obstacles: [], // 避障物体列表(用于碰撞检测)
+  hitObstacles: new Set() // 已撞过的障碍物(避免重复扣分)
+}
+
+// ==================== 任务定义 ====================
+const MISSIONS = {
+  'line-following': {
+    name: '巡线赛道',
+    icon: '🛣️',
+    requireParts: [], // 标准要求即可
+    buildScene: () => {
+      const group = new THREE.Group()
+      const points = [
+        new THREE.Vector3(0, 0.05, 0),
+        new THREE.Vector3(2, 0.05, -1),
+        new THREE.Vector3(4, 0.05, 1),
+        new THREE.Vector3(6, 0.05, -1),
+        new THREE.Vector3(8, 0.05, 0),
+        new THREE.Vector3(7, 0.05, 2),
+        new THREE.Vector3(4, 0.05, 3),
+        new THREE.Vector3(1, 0.05, 2),
+        new THREE.Vector3(0, 0.05, 0)
+      ]
+      const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.5)
+
+      const tubeGeom = new THREE.TubeGeometry(curve, 100, 0.4, 8, true)
+      const tube = new THREE.Mesh(tubeGeom, new THREE.MeshStandardMaterial({
+        color: 0x1e293b, metalness: 0.3, roughness: 0.8, transparent: true, opacity: 0.85
+      }))
+      tube.position.y = -0.35
+      tube.receiveShadow = true
+      group.add(tube)
+
+      const lineGeom = new THREE.TubeGeometry(curve, 100, 0.04, 6, true)
+      const line = new THREE.Mesh(lineGeom, new THREE.MeshStandardMaterial({
+        color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.6
+      }))
+      line.position.y = 0.01
+      group.add(line)
+
+      const startMarker = new THREE.Mesh(
+        new THREE.RingGeometry(0.5, 0.6, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.5, side: THREE.DoubleSide
+        })
+      )
+      startMarker.rotation.x = -Math.PI / 2
+      startMarker.position.copy(points[0])
+      startMarker.position.y = 0.02
+      group.add(startMarker)
+
+      return { group, curve, obstacles: [] }
+    },
+    score: (state, analysis, success) => {
+      // 巡线:完成 +40,完整性 +30,装配 +15,不脱落 +15
+      if (!success) return Math.round(state.distance / state.trackPath.getLength() * 40)
+      let s = 40
+      s += Math.min(30, analysis.screwIntegrity * 0.3)
+      s += Math.min(15, (analysis.motorCount + (analysis.hasCamera ? 1 : 0) + (analysis.hasCPU ? 1 : 0)) * 5)
+      s += Math.max(0, 15 - state.detached.length * 5)
+      return Math.round(s)
+    }
+  },
+
+  'obstacle-course': {
+    name: '避障穿越',
+    icon: '🚧',
+    requireParts: [], // 没有相机也能跑,但会撞得很惨
+    buildScene: () => {
+      const group = new THREE.Group()
+      // 直线赛道,沿途分布 8 个障碍物
+      const points = [
+        new THREE.Vector3(0, 0.05, 0),
+        new THREE.Vector3(2, 0.05, 0.3),
+        new THREE.Vector3(4, 0.05, -0.3),
+        new THREE.Vector3(6, 0.05, 0.4),
+        new THREE.Vector3(8, 0.05, -0.2),
+        new THREE.Vector3(10, 0.05, 0.3),
+        new THREE.Vector3(12, 0.05, 0)
+      ]
+      const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5)
+
+      const tube = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 100, 0.5, 8, false),
+        new THREE.MeshStandardMaterial({
+          color: 0x0f172a, metalness: 0.3, roughness: 0.85,
+          transparent: true, opacity: 0.85
+        })
+      )
+      tube.position.y = -0.4
+      tube.receiveShadow = true
+      group.add(tube)
+
+      // 中线
+      const lineGeom = new THREE.TubeGeometry(curve, 100, 0.03, 6, false)
+      const line = new THREE.Mesh(lineGeom, new THREE.MeshStandardMaterial({
+        color: 0x06b6d4, emissive: 0x06b6d4, emissiveIntensity: 0.5
+      }))
+      line.position.y = 0.01
+      group.add(line)
+
+      // 8 个障碍物(沿赛道随机偏移)
+      const obstacles = []
+      for (let i = 0; i < 8; i++) {
+        const t = 0.08 + i * 0.11
+        const pt = curve.getPointAt(t)
+        const tangent = curve.getTangentAt(t)
+        // 法向(垂直 tangent,在 xz 平面)
+        const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize()
+        const sideOffset = (i % 2 === 0 ? 1 : -1) * (0.15 + Math.random() * 0.2)
+        const obsPos = pt.clone().add(normal.multiplyScalar(sideOffset))
+
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.18, 0.55, 12),
+          new THREE.MeshStandardMaterial({
+            color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.2, roughness: 0.6
+          })
+        )
+        cone.position.copy(obsPos)
+        cone.position.y = 0.27
+        cone.castShadow = true
+        cone.userData.obstacleId = i
+        group.add(cone)
+
+        // 顶部白条
+        const stripe = new THREE.Mesh(
+          new THREE.TorusGeometry(0.13, 0.025, 8, 16),
+          new THREE.MeshStandardMaterial({ color: 0xffffff })
+        )
+        stripe.rotation.x = Math.PI / 2
+        stripe.position.copy(obsPos)
+        stripe.position.y = 0.45
+        group.add(stripe)
+
+        obstacles.push({ mesh: cone, pos: obsPos, id: i, hitRadius: 0.35 })
+      }
+
+      // 起点+终点
+      const startMarker = new THREE.Mesh(
+        new THREE.RingGeometry(0.5, 0.6, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.5, side: THREE.DoubleSide
+        })
+      )
+      startMarker.rotation.x = -Math.PI / 2
+      startMarker.position.copy(points[0])
+      startMarker.position.y = 0.02
+      group.add(startMarker)
+
+      const endMarker = new THREE.Mesh(
+        new THREE.RingGeometry(0.5, 0.6, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.5, side: THREE.DoubleSide
+        })
+      )
+      endMarker.rotation.x = -Math.PI / 2
+      endMarker.position.copy(points[points.length - 1])
+      endMarker.position.y = 0.02
+      group.add(endMarker)
+
+      return { group, curve, obstacles }
+    },
+    score: (state, analysis, success) => {
+      let s = 0
+      if (success) {
+        s += 50 // 完成 +50
+        // 时间:30 秒内 +25,40 秒内 +15,否则 +5
+        const sec = state.elapsedMs / 1000
+        s += sec < 30 ? 25 : sec < 40 ? 15 : 5
+        // 没撞 +20,撞 1 次 +10,2 次 +5,3 次以上 0
+        const hits = state.obstacleHits
+        s += hits === 0 ? 20 : hits === 1 ? 10 : hits === 2 ? 5 : 0
+        // 有相机 +5(避障奖励)
+        if (analysis.hasCamera) s += 5
+      } else {
+        s = Math.round(state.distance / state.trackPath.getLength() * 40)
+      }
+      return Math.round(s)
+    }
+  },
+
+  'speed-race': {
+    name: '竞速冲刺',
+    icon: '🏁',
+    requireParts: [],
+    buildScene: () => {
+      const group = new THREE.Group()
+      // 直线 + 发卡弯 + 直线
+      const points = [
+        new THREE.Vector3(0, 0.05, 0),
+        new THREE.Vector3(3, 0.05, 0),
+        new THREE.Vector3(6, 0.05, 0),
+        new THREE.Vector3(7.5, 0.05, 0.5),
+        new THREE.Vector3(8, 0.05, 1.5),
+        new THREE.Vector3(7.5, 0.05, 2.5),
+        new THREE.Vector3(6, 0.05, 3),
+        new THREE.Vector3(3, 0.05, 3),
+        new THREE.Vector3(0, 0.05, 3)
+      ]
+      const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.4)
+
+      // 红色赛道
+      const tube = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 100, 0.45, 8, false),
+        new THREE.MeshStandardMaterial({
+          color: 0x7f1d1d, metalness: 0.3, roughness: 0.7, transparent: true, opacity: 0.85
+        })
+      )
+      tube.position.y = -0.4
+      tube.receiveShadow = true
+      group.add(tube)
+
+      // 中央竞速线(红白条纹效果)
+      const lineGeom = new THREE.TubeGeometry(curve, 100, 0.04, 6, false)
+      const line = new THREE.Mesh(lineGeom, new THREE.MeshStandardMaterial({
+        color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.7
+      }))
+      line.position.y = 0.01
+      group.add(line)
+
+      // 起点(绿)
+      const startMarker = new THREE.Mesh(
+        new THREE.RingGeometry(0.5, 0.6, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.6, side: THREE.DoubleSide
+        })
+      )
+      startMarker.rotation.x = -Math.PI / 2
+      startMarker.position.copy(points[0])
+      startMarker.position.y = 0.02
+      group.add(startMarker)
+
+      // 终点(格旗效果:8 个交替小方块组成的圆环)
+      const finishGroup = new THREE.Group()
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2
+        const cube = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, 0.02, 0.08),
+          new THREE.MeshStandardMaterial({ color: i % 2 === 0 ? 0xffffff : 0x000000 })
+        )
+        cube.position.set(Math.cos(a) * 0.55, 0, Math.sin(a) * 0.55)
+        finishGroup.add(cube)
+      }
+      finishGroup.position.copy(points[points.length - 1])
+      finishGroup.position.y = 0.02
+      group.add(finishGroup)
+
+      return { group, curve, obstacles: [] }
+    },
+    score: (state, analysis, success) => {
+      // 竞速:不会"失败",只看时间和速度
+      const sec = state.elapsedMs / 1000
+      let s = 0
+      if (success) {
+        s += 30 // 完成 +30
+        // 时间评分(基准 20 秒)
+        if (sec < 12) s += 50
+        else if (sec < 18) s += 40
+        else if (sec < 25) s += 25
+        else if (sec < 35) s += 10
+        // 平均速度奖励
+        s += Math.min(15, state.speed * 8)
+        // 电机数量奖励
+        s += Math.min(5, analysis.motorCount * 1.5)
+      } else {
+        s = Math.round(state.distance / state.trackPath.getLength() * 30)
+      }
+      return Math.round(s)
+    }
+  }
+}
+
+// ==================== 测试历史 ====================
+const HISTORY_KEY = 'robonexus_test_history_v1'
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '{}') } catch { return {} }
+}
+function saveHistory(missionId, record) {
+  const h = loadHistory()
+  if (!h[missionId]) h[missionId] = []
+  h[missionId].unshift(record)
+  h[missionId] = h[missionId].slice(0, 10) // 每个任务保留最近 10 次
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(h))
+}
+function getBestRecord(missionId) {
+  const h = loadHistory()
+  const list = h[missionId] || []
+  if (!list.length) return null
+  return list.reduce((best, r) => r.score > best.score ? r : best, list[0])
 }
 
 // 检查机器人是否能通过测试(分析已安装零件)
@@ -1741,25 +2032,51 @@ function enterTestMode() {
     return false
   }
 
-  console.log('进入测试模式,机器人分析:', analysis)
+  // 打开任务选择对话框,刷新历史最佳显示
+  Object.keys(MISSIONS).forEach(id => {
+    const best = getBestRecord(id)
+    const el = document.getElementById('best-' + id)
+    if (el) {
+      el.textContent = best
+        ? `最佳: ${best.score} 分 (${best.grade})`
+        : '最佳: --'
+    }
+  })
+  document.getElementById('mission-select').classList.add('active')
 
-  // 保存当前状态
-  testState.preTestState = {
-    robotX: 0, robotY: 0, robotZ: 0
-  }
+  return true // 工具状态切到 test;真正测试在 startMission 启动
+}
+
+// 选定任务后真正进入测试
+function startMission(missionId) {
+  const mission = MISSIONS[missionId]
+  if (!mission) return
+
+  const analysis = analyzeRobot()
+  console.log('启动任务:', missionId, analysis)
+
+  // 关闭对话框
+  document.getElementById('mission-select').classList.remove('active')
+
+  // 保存当前相机状态
   testState.preCameraState = {
     pos: camera.position.clone(),
     target: controls.target.clone()
   }
 
-  // 创建测试场景(3D 轨道 + 障碍物)
-  buildTestScene()
+  // 用任务自己的 buildScene 创建场景
+  const built = mission.buildScene()
+  testState.testGroup = built.group
+  testState.trackPath = built.curve
+  testState.obstacles = built.obstacles || []
+  scene.add(built.group)
 
-  // 计算运行速度(根据零件)
-  // 基础速度 0.03,每个轮子 +0.005,有 AI 芯片 +0.01,螺丝完整性影响
+  // 计算运行速度
   let baseSpeed = 0.025 + 0.005 * analysis.motorCount
   if (analysis.hasCPU) baseSpeed += 0.005
   if (analysis.hasCamera) baseSpeed += 0.005
+  // 竞速任务速度 + 50%
+  if (missionId === 'speed-race') baseSpeed *= 1.5
   baseSpeed *= analysis.screwIntegrity / 100
   testState.pathSpeed = baseSpeed
 
@@ -1772,22 +2089,23 @@ function enterTestMode() {
   testState.pathProgress = 0
   testState.integrity = analysis.screwIntegrity
   testState.detached = []
-  testState.mission = analysis.hasCamera ? '巡线 + 避障测试' : '巡线测试'
+  testState.missionId = missionId
+  testState.mission = mission.name
+  testState.obstacleHits = 0
+  testState.hitObstacles = new Set()
 
-  // 移动机器人到起点
-  const startPoint = testState.trackPath.getPointAt(0)
+  // 保存零件原位
   installedParts.forEach(p => {
     if (!p._origPos) p._origPos = p.position.clone()
   })
 
   // 显示 HUD
   document.getElementById('test-hud').classList.add('active')
-  document.getElementById('test-mission').textContent = testState.mission
+  document.getElementById('test-mission').textContent = mission.icon + ' ' + mission.name
   document.getElementById('test-integrity').textContent = `${testState.integrity}%`
-  document.getElementById('test-integrity').className =
-    'test-stat-value ' + (testState.integrity >= 90 ? 'good' : testState.integrity >= 70 ? 'warn' : 'bad')
 
-  // 相机切换到追逐视角
+  // 相机到起点
+  const startPoint = testState.trackPath.getPointAt(0)
   camera.position.set(startPoint.x - 3, 2.5, startPoint.z + 3)
   controls.target.copy(startPoint)
 
@@ -1838,96 +2156,7 @@ function exitTestMode() {
 }
 
 // 建立测试场景:S 形赛道 + 障碍物
-function buildTestScene() {
-  const group = new THREE.Group()
-
-  // S 形赛道路径(Catmull-Rom 曲线)
-  const points = [
-    new THREE.Vector3(0, 0.05, 0),
-    new THREE.Vector3(2, 0.05, -1),
-    new THREE.Vector3(4, 0.05, 1),
-    new THREE.Vector3(6, 0.05, -1),
-    new THREE.Vector3(8, 0.05, 0),
-    new THREE.Vector3(7, 0.05, 2),
-    new THREE.Vector3(4, 0.05, 3),
-    new THREE.Vector3(1, 0.05, 2),
-    new THREE.Vector3(0, 0.05, 0)
-  ]
-  const curve = new THREE.CatmullRomCurve3(points, true, 'catmullrom', 0.5)
-  testState.trackPath = curve
-
-  // 赛道(用管道几何体可视化)
-  const tubeGeom = new THREE.TubeGeometry(curve, 100, 0.4, 8, true)
-  const tubeMat = new THREE.MeshStandardMaterial({
-    color: 0x1e293b,
-    metalness: 0.3,
-    roughness: 0.8,
-    transparent: true,
-    opacity: 0.85
-  })
-  const tube = new THREE.Mesh(tubeGeom, tubeMat)
-  tube.position.y = -0.35
-  tube.receiveShadow = true
-  group.add(tube)
-
-  // 中央巡线(发光黄线)
-  const lineGeom = new THREE.TubeGeometry(curve, 100, 0.04, 6, true)
-  const lineMat = new THREE.MeshStandardMaterial({
-    color: 0xfbbf24,
-    emissive: 0xfbbf24,
-    emissiveIntensity: 0.6
-  })
-  const line = new THREE.Mesh(lineGeom, lineMat)
-  line.position.y = 0.01
-  group.add(line)
-
-  // 起点终点标志
-  const startMarker = new THREE.Mesh(
-    new THREE.RingGeometry(0.5, 0.6, 24),
-    new THREE.MeshStandardMaterial({
-      color: 0x22c55e,
-      emissive: 0x22c55e,
-      emissiveIntensity: 0.5,
-      side: THREE.DoubleSide
-    })
-  )
-  startMarker.rotation.x = -Math.PI / 2
-  startMarker.position.copy(points[0])
-  startMarker.position.y = 0.02
-  group.add(startMarker)
-
-  // 障碍物(3 个圆锥)
-  const obstacleColors = [0xef4444, 0xf59e0b, 0xa855f7]
-  ;[
-    new THREE.Vector3(3, 0, -0.2),
-    new THREE.Vector3(5.5, 0, 0.5),
-    new THREE.Vector3(2.5, 0, 2.3)
-  ].forEach((pos, i) => {
-    const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.18, 0.5, 12),
-      new THREE.MeshStandardMaterial({
-        color: obstacleColors[i],
-        roughness: 0.6
-      })
-    )
-    cone.position.copy(pos)
-    cone.position.y = 0.25
-    cone.castShadow = true
-    group.add(cone)
-    // 顶部条纹
-    const stripe = new THREE.Mesh(
-      new THREE.TorusGeometry(0.13, 0.02, 8, 16),
-      new THREE.MeshStandardMaterial({ color: 0xffffff })
-    )
-    stripe.rotation.x = Math.PI / 2
-    stripe.position.copy(pos)
-    stripe.position.y = 0.4
-    group.add(stripe)
-  })
-
-  testState.testGroup = group
-  scene.add(group)
-}
+// 老的 buildTestScene 已被 MISSIONS[id].buildScene 取代
 
 // 测试模式每帧推进
 function updateTestMode(dt) {
@@ -1973,6 +2202,43 @@ function updateTestMode(dt) {
   // 螺丝整体不到 70% 时:零件随机脱落
   if (testState.integrity < 70 && Math.random() < dt * 0.5) {
     detachRandomPart()
+  }
+
+  // 避障任务:碰撞检测
+  if (testState.missionId === 'obstacle-course' && testState.obstacles.length) {
+    const analysis = analyzeRobot()
+    // 没相机时撞概率高,有相机时大幅降低
+    const dodgeChance = analysis.hasCamera ? 0.7 : 0.05
+    testState.obstacles.forEach(obs => {
+      if (testState.hitObstacles.has(obs.id)) return
+      const d = pos.distanceTo(obs.pos)
+      if (d < obs.hitRadius) {
+        // 接近障碍物:有相机的会"避开"
+        if (Math.random() < dodgeChance) {
+          testState.hitObstacles.add(obs.id) // 算成功避开
+          return
+        }
+        // 撞了
+        testState.hitObstacles.add(obs.id)
+        testState.obstacleHits++
+        testState.integrity = Math.max(0, testState.integrity - 18)
+        // 障碍物被撞动画:倒下
+        const cone = obs.mesh
+        const fall = () => {
+          let p = 0
+          const animate = () => {
+            p += 0.05
+            if (p > 1) return
+            cone.rotation.x = p * Math.PI / 2.2
+            cone.position.y = Math.max(0.05, 0.27 - p * 0.2)
+            requestAnimationFrame(animate)
+          }
+          animate()
+        }
+        fall()
+        console.log(`💥 撞到障碍物 #${obs.id},完整性 -18%`)
+      }
+    })
   }
 
   // 相机跟随
@@ -2034,7 +2300,6 @@ function detachRandomPart() {
 function finishTest(success) {
   testState.active = false
 
-  // 评分
   const a = analyzeRobot()
   const stats = {
     distance: testState.distance,
@@ -2045,17 +2310,24 @@ function finishTest(success) {
     success
   }
 
-  // 计算综合得分(0-100)
-  let score = 0
-  if (success) {
-    score += 40 // 完成 +40
-    score += Math.min(30, a.screwIntegrity * 0.3) // 螺丝完整 +30
-    score += Math.min(15, (a.motorCount + (a.hasCamera ? 1 : 0) + (a.hasCPU ? 1 : 0)) * 5)
-    score += Math.max(0, 15 - testState.detached.length * 5)
-  } else {
-    score = Math.round(testState.distance / testState.trackPath.getLength() * 40)
-  }
+  // 用当前任务的评分函数算分
+  const mission = MISSIONS[testState.missionId] || MISSIONS['line-following']
+  let score = mission.score(testState, a, success)
+  score = Math.max(0, Math.min(100, score))
   const grade = score >= 90 ? 'S' : score >= 75 ? 'A' : score >= 60 ? 'B' : score >= 40 ? 'C' : 'D'
+
+  // 历史最佳(保存前)
+  const prevBest = getBestRecord(testState.missionId)
+  const isNewBest = !prevBest || score > prevBest.score
+
+  // 保存历史
+  saveHistory(testState.missionId, {
+    score, grade, success,
+    timeS: stats.timeS,
+    integrity: stats.integrity,
+    obstacleHits: testState.obstacleHits,
+    timestamp: new Date().toISOString()
+  })
 
   // 渲染报告
   document.getElementById('report-grade').textContent = grade
@@ -2068,24 +2340,34 @@ function finishTest(success) {
   document.getElementById('report-grade').style.webkitBackgroundClip = 'text'
   document.getElementById('report-grade').style.webkitTextFillColor = 'transparent'
 
+  const newBestTag = isNewBest ? ' 🌟 新纪录!' : ''
   document.getElementById('report-title').textContent =
-    success ? `测试通过!得分 ${score}` : `测试失败!得分 ${score}`
+    (success ? `${mission.icon} ${mission.name}通过 ` : `${mission.icon} ${mission.name}失败 `) +
+    `· ${score} 分${newBestTag}`
 
-  document.getElementById('report-stats').innerHTML = `
-    <div>距离: <strong>${stats.distance.toFixed(1)} m</strong></div>
+  // 不同任务显示不同的统计
+  let statsHtml = `
     <div>用时: <strong>${stats.timeS.toFixed(1)} s</strong></div>
+    <div>距离: <strong>${stats.distance.toFixed(1)} m</strong></div>
     <div>平均速度: <strong>${stats.speed.toFixed(2)} m/s</strong></div>
     <div>结构完整性: <strong>${stats.integrity}%</strong></div>
     <div>脱落零件: <strong>${stats.detachedCount} 件</strong></div>
   `
+  if (testState.missionId === 'obstacle-course') {
+    statsHtml += `<div>障碍碰撞: <strong>${testState.obstacleHits} 次</strong></div>`
+  }
+  if (prevBest && !isNewBest) {
+    statsHtml += `<div style="color:#fbbf24;margin-top:6px;">历史最佳: ${prevBest.score} 分 (${prevBest.grade})</div>`
+  }
+  document.getElementById('report-stats').innerHTML = statsHtml
 
   document.getElementById('report-checklist').innerHTML = `
     <div class="${a.hasChassis ? 'ok' : 'fail'}">底盘框架</div>
     <div class="${a.wheelComplete >= 4 ? 'ok' : 'fail'}">4 个完整轮子 (${a.wheelComplete}/4)</div>
-    <div class="${a.motorCount >= 4 ? 'ok' : a.motorCount >= 1 ? 'ok' : 'fail'}">电机 (${a.motorCount} 个)</div>
+    <div class="${a.motorCount >= 1 ? 'ok' : 'fail'}">电机 (${a.motorCount} 个)</div>
     <div class="${a.hasController ? 'ok' : 'fail'}">控制器</div>
     <div class="${a.hasBattery ? 'ok' : 'fail'}">电池组</div>
-    <div class="${a.hasCamera ? 'ok' : 'fail'}">视觉相机 (可选,加分)</div>
+    <div class="${a.hasCamera ? 'ok' : 'fail'}">视觉相机 ${testState.missionId === 'obstacle-course' ? '(避障必备)' : '(加分项)'}</div>
     <div class="${a.screwIntegrity >= 90 ? 'ok' : 'fail'}">螺丝拧紧度: ${a.screwIntegrity}%</div>
   `
 
@@ -2096,6 +2378,19 @@ function finishTest(success) {
 document.getElementById('report-close')?.addEventListener('click', () => {
   document.getElementById('test-report').classList.remove('active')
   // 自动切回 hand 工具
+  document.querySelector('.tool-btn[data-tool="hand"]').click()
+})
+
+// 任务选择
+document.querySelectorAll('.mission-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const id = card.dataset.mission
+    if (id) startMission(id)
+  })
+})
+document.getElementById('mission-cancel')?.addEventListener('click', () => {
+  document.getElementById('mission-select').classList.remove('active')
+  // 切回 hand 工具
   document.querySelector('.tool-btn[data-tool="hand"]').click()
 })
 
