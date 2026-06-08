@@ -455,8 +455,197 @@ const PART_SPECS = {
     snapDistance: 0.3
   },
 
+  // ========== 电机组件（5 个子零件）==========
+  // 组装链: wheel/hub → motor-housing → rotor → stator-coil → cooling-fin → power-cable
+  'motor-housing': {
+    name: '电机外壳',
+    desc: '吸附到轮毂背面',
+    category: 'motor',
+    create: () => {
+      const group = new THREE.Group()
+      const housing = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.1, 0.18, 16),
+        new THREE.MeshStandardMaterial({ color: 0x1e40af, metalness: 0.85, roughness: 0.2 })
+      )
+      group.add(housing)
+      // 散热槽
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2
+        const slot = new THREE.Mesh(
+          new THREE.BoxGeometry(0.005, 0.13, 0.015),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a })
+        )
+        slot.position.set(Math.cos(a) * 0.1, 0, Math.sin(a) * 0.1)
+        slot.rotation.y = a
+        group.add(slot)
+      }
+      // 端盖
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.105, 0.105, 0.015, 16),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a })
+      )
+      cap.position.y = 0.0975
+      group.add(cap)
+
+      group.userData = {
+        partType: 'motor-housing',
+        snapPoints: [[0, 0, 0]] // 中心供转子吸附
+      }
+      return group
+    },
+    snapTo: 'hub',
+    snapDistance: 0.18
+  },
+
+  'rotor': {
+    name: '转子',
+    desc: '电机内部旋转部件',
+    category: 'motor',
+    create: () => {
+      const group = new THREE.Group()
+      // 转子主体
+      const core = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.04, 0.14, 12),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.95, roughness: 0.1 })
+      )
+      group.add(core)
+      // 磁极（4 个）
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2
+        const pole = new THREE.Mesh(
+          new THREE.BoxGeometry(0.025, 0.12, 0.025),
+          new THREE.MeshStandardMaterial({
+            color: i % 2 === 0 ? 0xef4444 : 0x3b82f6,
+            metalness: 0.7
+          })
+        )
+        pole.position.set(Math.cos(a) * 0.05, 0, Math.sin(a) * 0.05)
+        group.add(pole)
+      }
+      // 输出轴
+      const shaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.04, 12),
+        new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.95 })
+      )
+      shaft.position.y = 0.09
+      group.add(shaft)
+
+      group.userData = {
+        partType: 'rotor',
+        snapPoints: [[0, 0, 0]]
+      }
+      return group
+    },
+    snapTo: 'motor-housing',
+    snapDistance: 0.12
+  },
+
+  'stator-coil': {
+    name: '定子线圈',
+    desc: '产生磁场的铜线圈',
+    category: 'motor',
+    create: () => {
+      const group = new THREE.Group()
+      // 线圈环
+      for (let i = 0; i < 6; i++) {
+        const coil = new THREE.Mesh(
+          new THREE.TorusGeometry(0.07, 0.012, 8, 16),
+          new THREE.MeshStandardMaterial({ color: 0xb45309, metalness: 0.85, roughness: 0.2 })
+        )
+        coil.position.y = -0.05 + i * 0.02
+        group.add(coil)
+      }
+
+      group.userData = {
+        partType: 'stator-coil',
+        snapPoints: [[0, 0, 0]]
+      }
+      return group
+    },
+    snapTo: 'rotor',
+    snapDistance: 0.12
+  },
+
+  'cooling-fin': {
+    name: '散热片',
+    desc: '散发电机热量',
+    category: 'motor',
+    create: () => {
+      const group = new THREE.Group()
+      // 6 片散热鳍片
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2
+        const fin = new THREE.Mesh(
+          new THREE.BoxGeometry(0.005, 0.15, 0.06),
+          new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.7, roughness: 0.4 })
+        )
+        fin.position.set(Math.cos(a) * 0.13, 0, Math.sin(a) * 0.13)
+        fin.rotation.y = a
+        group.add(fin)
+      }
+      // 中心环
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.115, 0.01, 8, 24),
+        new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.85 })
+      )
+      ring.rotation.x = Math.PI / 2
+      group.add(ring)
+
+      group.userData = { partType: 'cooling-fin' }
+      return group
+    },
+    snapTo: 'motor-housing',
+    snapDistance: 0.18
+  },
+
+  'power-cable': {
+    name: '电源线',
+    desc: '红黑双线接电池',
+    category: 'motor',
+    create: () => {
+      const group = new THREE.Group()
+      // 红线（正极）
+      const redCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0.05, -0.1, 0),
+        new THREE.Vector3(0.1, -0.25, 0)
+      ])
+      const redCable = new THREE.Mesh(
+        new THREE.TubeGeometry(redCurve, 16, 0.012, 8, false),
+        new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.7 })
+      )
+      group.add(redCable)
+      // 黑线（负极）
+      const blackCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0.03, 0, 0),
+        new THREE.Vector3(0.08, -0.1, 0),
+        new THREE.Vector3(0.13, -0.25, 0)
+      ])
+      const blackCable = new THREE.Mesh(
+        new THREE.TubeGeometry(blackCurve, 16, 0.012, 8, false),
+        new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.7 })
+      )
+      group.add(blackCable)
+      // 接头
+      const plug = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.02, 0.025),
+        new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.6 })
+      )
+      plug.position.set(0.115, -0.25, 0)
+      group.add(plug)
+
+      group.userData = { partType: 'power-cable', needsWiring: true }
+      return group
+    },
+    snapTo: 'motor-housing',
+    snapDistance: 0.18
+  },
+
+  // ========== 兼容老版本电机 ==========
   'motor': {
-    name: '电机',
+    name: '电机(整体)',
+    desc: '快速模式',
+    category: 'motor',
     create: () => {
       const group = new THREE.Group()
       const motor = new THREE.Mesh(
@@ -480,8 +669,244 @@ const PART_SPECS = {
     snapDistance: 0.25
   },
 
+  // ========== 传感器组件（6 个子零件）==========
+  // 组装链: chassis-frame → mount-base → mount-pole → gimbal → camera-shell → lens → data-cable
+  'mount-base': {
+    name: '支架底座',
+    desc: '固定到底盘中央',
+    category: 'sensor',
+    create: () => {
+      const group = new THREE.Group()
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.15, 0.1, 8),
+        new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.75, roughness: 0.25 })
+      )
+      base.position.y = 0.05
+      group.add(base)
+      // 4 个固定螺丝孔
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2
+        const screw = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.012, 0.02, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.3 })
+        )
+        screw.position.set(Math.cos(a) * 0.1, 0.1, Math.sin(a) * 0.1)
+        screw.userData = { type: 'screw-point', tightened: false }
+        group.add(screw)
+      }
+      // 顶部插孔（供支架杆吸附）
+      const socket = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.053, 0.053, 0.03, 12),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b })
+      )
+      socket.position.y = 0.115
+      group.add(socket)
+
+      group.userData = {
+        partType: 'mount-base',
+        needsScrews: 4,
+        screwsTightened: 0,
+        snapPoints: [[0, 0.13, 0]]
+      }
+      return group
+    },
+    snapTo: 'chassis-frame',
+    snapDistance: 0.35
+  },
+
+  'mount-pole': {
+    name: '支架杆',
+    desc: '可调高度杆，插入底座',
+    category: 'sensor',
+    create: () => {
+      const group = new THREE.Group()
+      // 主杆（3 节伸缩）
+      const colors = [0x64748b, 0x475569, 0x334155]
+      for (let i = 0; i < 3; i++) {
+        const segment = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.05 - i * 0.005, 0.05 - i * 0.005, 0.25, 12),
+          new THREE.MeshStandardMaterial({ color: colors[i], metalness: 0.8, roughness: 0.2 })
+        )
+        segment.position.y = 0.125 + i * 0.25
+        group.add(segment)
+      }
+      // 顶部万向接头插孔
+      const topSocket = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 12, 12),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b })
+      )
+      topSocket.position.y = 0.8
+      group.add(topSocket)
+
+      group.userData = {
+        partType: 'mount-pole',
+        snapPoints: [[0, 0.8, 0]]
+      }
+      return group
+    },
+    snapTo: 'mount-base',
+    snapDistance: 0.2
+  },
+
+  'gimbal': {
+    name: '万向接头',
+    desc: '可360度旋转接头',
+    category: 'sensor',
+    create: () => {
+      const group = new THREE.Group()
+      // 球形关节
+      const ball = new THREE.Mesh(
+        new THREE.SphereGeometry(0.055, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9, roughness: 0.1 })
+      )
+      group.add(ball)
+      // 卡环
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.058, 0.015, 12, 16),
+        new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.85 })
+      )
+      group.add(ring)
+      // 顶部相机接口
+      const connector = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.04, 0.05, 8),
+        new THREE.MeshStandardMaterial({ color: 0x334155 })
+      )
+      connector.position.y = 0.08
+      group.add(connector)
+
+      group.userData = {
+        partType: 'gimbal',
+        snapPoints: [[0, 0.11, 0]]
+      }
+      return group
+    },
+    snapTo: 'mount-pole',
+    snapDistance: 0.15
+  },
+
+  'camera-shell': {
+    name: '相机外壳',
+    desc: '保护壳体',
+    category: 'sensor',
+    create: () => {
+      const group = new THREE.Group()
+      const shell = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.12, 0.15),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.6, roughness: 0.4 })
+      )
+      group.add(shell)
+      // 散热槽
+      for (let i = -2; i <= 2; i++) {
+        const vent = new THREE.Mesh(
+          new THREE.BoxGeometry(0.19, 0.01, 0.01),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a })
+        )
+        vent.position.y = i * 0.02
+        group.add(vent)
+      }
+      // 前方镜头孔
+      const lensHole = new THREE.Mesh(
+        new THREE.CircleGeometry(0.07, 16),
+        new THREE.MeshStandardMaterial({ color: 0x111827, side: THREE.DoubleSide })
+      )
+      lensHole.position.z = 0.076
+      group.add(lensHole)
+
+      group.userData = {
+        partType: 'camera-shell',
+        snapPoints: [[0, 0, 0.076]]
+      }
+      return group
+    },
+    snapTo: 'gimbal',
+    snapDistance: 0.15
+  },
+
+  'lens': {
+    name: '镜头模块',
+    desc: '光学镜头组',
+    category: 'sensor',
+    create: () => {
+      const group = new THREE.Group()
+      // 镜头本体
+      const lensBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.065, 0.055, 0.08, 20),
+        new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.8, roughness: 0.15 })
+      )
+      lensBody.rotation.x = Math.PI / 2
+      lensBody.position.z = 0.04
+      group.add(lensBody)
+      // 镜片（半透明玻璃）
+      const glass = new THREE.Mesh(
+        new THREE.CircleGeometry(0.06, 20),
+        new THREE.MeshStandardMaterial({
+          color: 0x06b6d4,
+          metalness: 0.95,
+          roughness: 0.05,
+          transparent: true,
+          opacity: 0.7
+        })
+      )
+      glass.position.z = 0.08
+      group.add(glass)
+      // LED指示灯
+      const led = new THREE.Mesh(
+        new THREE.SphereGeometry(0.008, 8, 8),
+        new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          emissive: 0xef4444,
+          emissiveIntensity: 0.6
+        })
+      )
+      led.position.set(0.05, 0.05, 0.01)
+      group.add(led)
+
+      group.userData = { partType: 'lens' }
+      return group
+    },
+    snapTo: 'camera-shell',
+    snapDistance: 0.12
+  },
+
+  'data-cable': {
+    name: '数据线',
+    desc: '连接到控制器',
+    category: 'sensor',
+    create: () => {
+      const group = new THREE.Group()
+      // 简化线缆（曲线路径）
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0.1, -0.1, 0.05),
+        new THREE.Vector3(0.15, -0.2, 0),
+        new THREE.Vector3(0.2, -0.3, -0.05)
+      ])
+      const tubeGeom = new THREE.TubeGeometry(curve, 20, 0.01, 8, false)
+      const cable = new THREE.Mesh(
+        tubeGeom,
+        new THREE.MeshStandardMaterial({ color: 0x3b82f6, metalness: 0.3, roughness: 0.7 })
+      )
+      group.add(cable)
+      // 接头
+      const plug = new THREE.Mesh(
+        new THREE.BoxGeometry(0.03, 0.02, 0.02),
+        new THREE.MeshStandardMaterial({ color: 0x64748b })
+      )
+      plug.position.set(0.2, -0.3, -0.05)
+      group.add(plug)
+
+      group.userData = { partType: 'data-cable', needsWiring: true }
+      return group
+    },
+    snapTo: 'camera-shell',
+    snapDistance: 0.15
+  },
+
+  // ========== 兼容老版本整体传感器 ==========
   'sensor-mount': {
-    name: '传感器支架',
+    name: '传感器支架(整体)',
+    desc: '快速模式',
+    category: 'sensor',
     create: () => {
       const group = new THREE.Group()
       const pole = new THREE.Mesh(
@@ -506,7 +931,9 @@ const PART_SPECS = {
   },
 
   'camera': {
-    name: '视觉相机',
+    name: '视觉相机(整体)',
+    desc: '快速模式',
+    category: 'sensor',
     create: () => {
       const group = new THREE.Group()
       const lens = new THREE.Mesh(
@@ -529,8 +956,274 @@ const PART_SPECS = {
     snapDistance: 0.2
   },
 
+  // ========== 控制器组件（6 个子零件）==========
+  // 组装链: chassis-frame → pcb-board → cpu-chip → memory + capacitor + connector → controller-cover
+  'pcb-board': {
+    name: 'PCB主板',
+    desc: '电路板基板',
+    category: 'controller',
+    create: () => {
+      const group = new THREE.Group()
+      const board = new THREE.Mesh(
+        new THREE.BoxGeometry(0.55, 0.025, 0.55),
+        new THREE.MeshStandardMaterial({ color: 0x064e3b, roughness: 0.6 })
+      )
+      group.add(board)
+      // 电路走线（金色）
+      for (let i = 0; i < 5; i++) {
+        const trace = new THREE.Mesh(
+          new THREE.BoxGeometry(0.012, 0.001, 0.4),
+          new THREE.MeshStandardMaterial({
+            color: 0xfbbf24,
+            metalness: 0.95,
+            emissive: 0xfbbf24,
+            emissiveIntensity: 0.1
+          })
+        )
+        trace.position.set(-0.2 + i * 0.1, 0.013, 0)
+        group.add(trace)
+      }
+      // 安装孔（4角）
+      for (let x of [-0.24, 0.24]) {
+        for (let z of [-0.24, 0.24]) {
+          const hole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.02, 0.026, 8),
+            new THREE.MeshStandardMaterial({ color: 0x0a0e1a })
+          )
+          hole.position.set(x, 0, z)
+          group.add(hole)
+        }
+      }
+      // 4 个固定螺丝
+      for (let x of [-0.24, 0.24]) {
+        for (let z of [-0.24, 0.24]) {
+          const screw = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.014, 0.014, 0.02, 8),
+            new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.3 })
+          )
+          screw.position.set(x, 0.018, z)
+          screw.userData = { type: 'screw-point', tightened: false }
+          group.add(screw)
+        }
+      }
+
+      group.userData = {
+        partType: 'pcb-board',
+        needsScrews: 4,
+        screwsTightened: 0,
+        snapPoints: [[0, 0.025, 0]] // 中心供 CPU 吸附
+      }
+      return group
+    },
+    snapTo: 'chassis-frame',
+    snapDistance: 0.35
+  },
+
+  'cpu-chip': {
+    name: 'CPU芯片',
+    desc: '主处理器',
+    category: 'controller',
+    create: () => {
+      const group = new THREE.Group()
+      // 芯片主体
+      const chip = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.04, 0.18),
+        new THREE.MeshStandardMaterial({
+          color: 0x1f2937,
+          metalness: 0.6,
+          roughness: 0.4
+        })
+      )
+      group.add(chip)
+      // 顶部金属盖
+      const lid = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.005, 0.14),
+        new THREE.MeshStandardMaterial({
+          color: 0xa855f7,
+          metalness: 0.95,
+          roughness: 0.1,
+          emissive: 0xa855f7,
+          emissiveIntensity: 0.2
+        })
+      )
+      lid.position.y = 0.025
+      group.add(lid)
+      // 引脚（4 边各 6 个）
+      const pinMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.95 })
+      for (let i = 0; i < 6; i++) {
+        const offset = -0.075 + i * 0.03
+        ;[0.095, -0.095].forEach(z => {
+          const pin = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.015, 0.012), pinMat)
+          pin.position.set(offset, -0.02, z)
+          group.add(pin)
+        })
+        ;[0.095, -0.095].forEach(x => {
+          const pin = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.015, 0.01), pinMat)
+          pin.position.set(x, -0.02, offset)
+          group.add(pin)
+        })
+      }
+
+      group.userData = {
+        partType: 'cpu-chip',
+        snapPoints: [[0, 0.03, 0]]
+      }
+      return group
+    },
+    snapTo: 'pcb-board',
+    snapDistance: 0.15
+  },
+
+  'memory': {
+    name: '内存条',
+    desc: 'RAM 模块',
+    category: 'controller',
+    create: () => {
+      const group = new THREE.Group()
+      // 内存条本体
+      const ram = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 0.04, 0.025),
+        new THREE.MeshStandardMaterial({ color: 0x064e3b, roughness: 0.6 })
+      )
+      group.add(ram)
+      // 8 颗内存芯片
+      for (let i = 0; i < 8; i++) {
+        const chip = new THREE.Mesh(
+          new THREE.BoxGeometry(0.022, 0.012, 0.018),
+          new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.4 })
+        )
+        chip.position.set(-0.08 + i * 0.024, 0.026, 0)
+        group.add(chip)
+      }
+      // 金手指
+      const goldFingers = new THREE.Mesh(
+        new THREE.BoxGeometry(0.21, 0.005, 0.015),
+        new THREE.MeshStandardMaterial({
+          color: 0xfbbf24,
+          metalness: 0.95,
+          emissive: 0xfbbf24,
+          emissiveIntensity: 0.15
+        })
+      )
+      goldFingers.position.set(0, -0.022, 0.015)
+      group.add(goldFingers)
+
+      group.userData = { partType: 'memory' }
+      return group
+    },
+    snapTo: 'pcb-board',
+    snapDistance: 0.18
+  },
+
+  'capacitor': {
+    name: '电容组',
+    desc: '滤波电容 x4',
+    category: 'controller',
+    create: () => {
+      const group = new THREE.Group()
+      // 4 颗圆柱电容
+      const positions = [[-0.06, 0, 0], [-0.02, 0, 0], [0.02, 0, 0], [0.06, 0, 0]]
+      positions.forEach(([x, y, z]) => {
+        const cap = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 0.06, 12),
+          new THREE.MeshStandardMaterial({ color: 0x1e40af, metalness: 0.4 })
+        )
+        cap.position.set(x, 0.03, z)
+        group.add(cap)
+        // 顶部圆面
+        const top = new THREE.Mesh(
+          new THREE.CircleGeometry(0.014, 12),
+          new THREE.MeshStandardMaterial({ color: 0x111827 })
+        )
+        top.rotation.x = -Math.PI / 2
+        top.position.set(x, 0.06, z)
+        group.add(top)
+      })
+
+      group.userData = { partType: 'capacitor' }
+      return group
+    },
+    snapTo: 'pcb-board',
+    snapDistance: 0.18
+  },
+
+  'connector': {
+    name: '连接排针',
+    desc: 'GPIO 接口',
+    category: 'controller',
+    create: () => {
+      const group = new THREE.Group()
+      // 排针基座
+      const base = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.008, 0.025),
+        new THREE.MeshStandardMaterial({ color: 0x111827 })
+      )
+      group.add(base)
+      // 16 根针脚
+      for (let i = 0; i < 16; i++) {
+        const pin = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.003, 0.003, 0.025, 6),
+          new THREE.MeshStandardMaterial({
+            color: 0xfbbf24,
+            metalness: 0.95,
+            emissive: 0xfbbf24,
+            emissiveIntensity: 0.2
+          })
+        )
+        pin.position.set(-0.075 + i * 0.01, 0.0125, 0)
+        group.add(pin)
+      }
+
+      group.userData = { partType: 'connector' }
+      return group
+    },
+    snapTo: 'pcb-board',
+    snapDistance: 0.18
+  },
+
+  'controller-cover': {
+    name: '外壳上盖',
+    desc: '透明保护盖',
+    category: 'controller',
+    create: () => {
+      const group = new THREE.Group()
+      const cover = new THREE.Mesh(
+        new THREE.BoxGeometry(0.58, 0.06, 0.58),
+        new THREE.MeshStandardMaterial({
+          color: 0x06b6d4,
+          metalness: 0.5,
+          roughness: 0.1,
+          transparent: true,
+          opacity: 0.4,
+          emissive: 0x06b6d4,
+          emissiveIntensity: 0.1
+        })
+      )
+      group.add(cover)
+      // 顶部 logo
+      const logo = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.005, 0.1),
+        new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          emissive: 0xffffff,
+          emissiveIntensity: 0.5
+        })
+      )
+      logo.position.y = 0.033
+      group.add(logo)
+
+      group.userData = { partType: 'controller-cover' }
+      return group
+    },
+    snapTo: 'pcb-board',
+    snapDistance: 0.4
+  },
+
+  // ========== 兼容老版本控制器 ==========
   'controller': {
-    name: '主控芯片',
+    name: '主控芯片(整体)',
+    desc: '快速模式',
+    category: 'controller',
     create: () => {
       const group = new THREE.Group()
       const chip = new THREE.Mesh(
