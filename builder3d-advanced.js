@@ -1299,9 +1299,13 @@ function init() {
   camera.position.set(4, 4, 6)
   camera.lookAt(0, 0, 0)
 
-  renderer = new THREE.WebGLRenderer({ antialias: true })
+  renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    powerPreference: 'high-performance' // 优先性能模式
+  })
   renderer.setSize(container.clientWidth, container.clientHeight)
-  renderer.setPixelRatio(window.devicePixelRatio)
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)) // 限制最大像素比为 2
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
   container.appendChild(renderer.domElement)
@@ -1312,6 +1316,7 @@ function init() {
   controls.maxDistance = 15
   controls.minDistance = 2
   controls.maxPolarAngle = Math.PI / 2.2
+  controls.enablePan = false // 禁用平移,减少误操作
 
   // 光照
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.5)
@@ -1326,8 +1331,10 @@ function init() {
   dirLight.shadow.camera.right = 8
   dirLight.shadow.camera.top = 8
   dirLight.shadow.camera.bottom = -8
-  dirLight.shadow.mapSize.width = 2048
-  dirLight.shadow.mapSize.height = 2048
+  // 降低阴影贴图分辨率提升性能
+  dirLight.shadow.mapSize.width = 1024
+  dirLight.shadow.mapSize.height = 1024
+  dirLight.shadow.bias = -0.001 // 减少阴影失真
   scene.add(dirLight)
 
   // 地面
@@ -1353,6 +1360,15 @@ function init() {
 
   window.addEventListener('resize', onWindowResize)
   animate()
+
+  // 隐藏加载屏幕
+  setTimeout(() => {
+    const loadingScreen = document.getElementById('loading-screen')
+    if (loadingScreen) {
+      loadingScreen.classList.add('hide')
+      setTimeout(() => loadingScreen.remove(), 500)
+    }
+  }, 300)
 }
 
 function onWindowResize() {
@@ -1505,13 +1521,41 @@ function initDragDrop() {
 
     // 创建真实零件
     const part = PART_SPECS[draggedPartType].create()
-    part.position.copy(ghostPart.position)
+    const finalPos = ghostPart.position.clone()
     part.userData.snapTarget = ghostPart.userData.snapTarget
     part.castShadow = true
     part.receiveShadow = true
 
+    // 弹性落下动画:从上方 0.8 单位开始落下
+    part.position.set(finalPos.x, finalPos.y + 0.8, finalPos.z)
     scene.add(part)
     installedParts.push(part)
+
+    // 弹性缓动落下
+    let progress = 0
+    const dropDuration = 400 // ms
+    const startY = finalPos.y + 0.8
+    const startTime = Date.now()
+    const animate = () => {
+      const elapsed = Date.now() - startTime
+      progress = Math.min(1, elapsed / dropDuration)
+      // easeOutBounce 效果
+      const eased = progress < 0.5
+        ? 2 * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2
+      part.position.y = startY + (finalPos.y - startY) * eased
+
+      // 轻微旋转(落下时自转)
+      part.rotation.y = progress * Math.PI * 0.3
+
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        part.position.copy(finalPos)
+        part.rotation.y = 0
+      }
+    }
+    animate()
 
     // 标记为已安装
     const item = document.querySelector(`.part-item[data-type="${draggedPartType}"]`)
@@ -2104,10 +2148,31 @@ function startMission(missionId) {
   document.getElementById('test-mission').textContent = mission.icon + ' ' + mission.name
   document.getElementById('test-integrity').textContent = `${testState.integrity}%`
 
-  // 相机到起点
+  // 相机平滑移动到起点（动画）
   const startPoint = testState.trackPath.getPointAt(0)
-  camera.position.set(startPoint.x - 3, 2.5, startPoint.z + 3)
-  controls.target.copy(startPoint)
+  const targetPos = new THREE.Vector3(startPoint.x - 3, 2.5, startPoint.z + 3)
+  const startPos = camera.position.clone()
+  const startTarget = controls.target.clone()
+
+  let progress = 0
+  const duration = 1200 // ms
+  const startTime = Date.now()
+  const animateCamera = () => {
+    const elapsed = Date.now() - startTime
+    progress = Math.min(1, elapsed / duration)
+    // easeInOutCubic
+    const eased = progress < 0.5
+      ? 4 * progress * progress * progress
+      : 1 - Math.pow(-2 * progress + 2, 3) / 2
+
+    camera.position.lerpVectors(startPos, targetPos, eased)
+    controls.target.lerpVectors(startTarget, startPoint, eased)
+
+    if (progress < 1) {
+      requestAnimationFrame(animateCamera)
+    }
+  }
+  animateCamera()
 
   return true
 }
@@ -2404,6 +2469,20 @@ document.getElementById('test-stop')?.addEventListener('click', () => {
 })
 
 // ==================== 启动 ====================
+// 模拟加载进度（Three.js 加载）
+const loadingBar = document.getElementById('loading-progress-bar')
+if (loadingBar) {
+  let progress = 0
+  const loadingInterval = setInterval(() => {
+    progress += Math.random() * 15 + 5
+    if (progress >= 100) {
+      progress = 100
+      clearInterval(loadingInterval)
+    }
+    loadingBar.style.width = progress + '%'
+  }, 80)
+}
+
 init()
 initDragDrop()
 initTools()
